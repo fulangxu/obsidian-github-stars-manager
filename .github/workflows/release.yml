@@ -3,7 +3,8 @@ name: Release Obsidian Plugin
 on:
   push:
     tags:
-      - 'v*'  # 推送版本标签时自动创建 Release 并上传插件文件
+      - 'v*'      # 兼容 v0.1.2 这类 GitHub 常见标签
+      - '[0-9]*'  # 兼容 Obsidian Community 使用的 0.1.2 标签
   workflow_dispatch:  # 支持手动触发测试
 
 jobs:
