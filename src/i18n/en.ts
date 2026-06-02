@@ -291,8 +291,8 @@ export const en = {
         autoFetch: 'Auto fetch',
         tokenLabel: 'Personal access token',
         tokenPlaceholder: 'Ghp_xxxxxxxxxxxx',
-        tokenDesc: 'GitHub personal access token with read:user and public_repo scopes',
-        tokenDescShort: 'GitHub personal access token with repo scope permission required',
+        tokenDesc: 'GitHub personal access token. Prefer the minimum read:user and public_repo scopes.',
+        tokenDescShort: 'Prefer read:user and public_repo scopes; use repo only if private repository data is needed.',
         tokenInputPlaceholder: 'Enter your GitHub personal access token',
         howToGetToken: 'How to get a token?',
         validateAndSave: 'Validate and save',
@@ -308,7 +308,7 @@ export const en = {
 
         // Single token (legacy)
         githubToken: 'GitHub personal access token',
-        githubTokenDesc: 'Token for accessing your GitHub starred repositories. Requires repo scope permission. It is recommended to use the multi-account management feature above.',
+        githubTokenDesc: 'Token for accessing your GitHub starred repositories. Prefer the minimum read:user and public_repo scopes; use repo only if private repository data is needed. It is recommended to use the multi-account management feature above.',
         githubTokenPlaceholder: 'Enter your GitHub personal access token',
 
         // Sync settings

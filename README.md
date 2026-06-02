@@ -37,9 +37,29 @@
 
 ### 🔒 安全与隐私
 - 🔐 使用 GitHub Personal Access Token 进行安全认证
-- 💾 所有数据本地存储，不上传到任何第三方服务器
-- 🛡️ 符合 Obsidian 插件商店安全标准
+- 💾 GitHub 令牌、仓库缓存、标签和笔记均保存在本地插件数据中
+- 🌐 仅在同步或校验令牌时访问 GitHub 官方服务
 - ✅ 通过 eslint-plugin-obsidianmd 全部规则验证
+
+## 安全与隐私
+
+GitHub Stars Manager 是本地优先的 GitHub 集成插件。插件只会在用户配置账号、校验令牌、手动同步或触发相关操作时访问 GitHub 服务。
+
+运行时可能访问的外部服务：
+
+- `api.github.com`：校验 GitHub 令牌、读取当前用户信息、获取已加星标仓库和仓库详情
+- `github.com`：用户点击仓库链接时在浏览器中打开 GitHub 页面
+- `avatars.githubusercontent.com` 或其他 GitHub 头像域名：显示 GitHub 用户和仓库所有者头像
+
+插件不会：
+
+- 上传保险库内容或笔记正文
+- 收集分析数据或遥测数据
+- 跟踪用户行为
+- 下载或执行远程代码
+- 将 GitHub 令牌发送到 GitHub 以外的服务
+
+GitHub 个人访问令牌会保存在 Obsidian 插件设置数据中。该数据位于本地保险库配置内，不会由插件主动上传；但它不是加密密码库。建议为令牌设置过期时间，并尽量使用满足需求的最小权限。
 
 ## 配置
 
@@ -54,7 +74,7 @@
 5.  **生成新令牌:** 点击 "Generate new token" 按钮，然后选择 "Generate new token (classic)"。
 6.  **令牌描述:** 在 "Note" 字段中，为您的令牌添加一个描述性的名称，例如 "Obsidian Stars Manager"。
 7.  **设置过期时间:** 选择一个合适的过期时间 (Expiration)。为了安全起见，建议不要选择 "No expiration"。
-8.  **选择范围 (Scopes):** 这是最关键的一步。您需要授予此令牌访问您的仓库的权限。勾选 `repo` 这个顶级复选框。这将自动选中其下的所有子权限，这是插件读取您的星标仓库所必需的。
+8.  **选择范围 (Scopes):** 建议优先使用最小权限。读取公开星标仓库通常使用 `read:user` 和 `public_repo` 即可；只有在确实需要访问私有仓库相关数据时，才考虑使用更宽泛的 `repo` 权限。
 9.  **生成令牌:** 点击页面底部的 "Generate token" 按钮。
 10. **复制令牌:** **重要！** GitHub 只会显示一次完整的令牌。请立即点击复制按钮将其复制下来，并妥善保管。**离开此页面后将无法再次看到完整的令牌。**
 11. **在插件中使用:** 将复制的令牌粘贴到 Obsidian 中 "GitHub Stars Manager" 插件设置选项卡里的 "GitHub 个人访问令牌 (PAT)" 字段中。
@@ -96,7 +116,7 @@
 ### 手动安装
 
 1. 下载最新版本的 `main.js`、`manifest.json` 和 `styles.css`
-2. 将这些文件复制到您的保险库文件夹：`VaultFolder/.obsidian/plugins/obsidian-github-stars-manager/`
+2. 将这些文件复制到您的保险库文件夹：`VaultFolder/.obsidian/plugins/github-stars-manager/`
 3. 重启 Obsidian
 4. 在设置中启用插件
 
@@ -160,13 +180,20 @@ npm run version
 
 ## 更新日志
 
-### v0.1.1 (当前版本)
+### v0.1.2 (当前版本)
+- 🛡️ 将最低 Obsidian 版本声明更新为 1.7.2，匹配当前使用的官方 API 要求
+- 🔒 补充安全与隐私说明，明确运行时访问的 GitHub 服务和本地数据存储方式
+- 🔑 将 GitHub 令牌说明调整为最小权限优先，推荐 `read:user` 和 `public_repo`
+- 📦 优化 Release 工作流，仅发布 Obsidian 支持的插件文件并生成构建来源证明
+- 🔧 移除构建脚本中的 `builtin-modules` 和 `dotenv` 依赖，降低审核警告
+
+### v0.1.1
 - 🏷️ 新增 Tag Chips 输入组件，支持快速选择标签
 - ⭐ 添加星标总数显示功能
 - 🎨 增强笔记卡片可见性和 UI 样式
 - 🔧 启用全部 25 个 eslint-plugin-obsidianmd 规则
 - 🐛 修复 token 错误处理和提示信息
-- 🛡️ 通过 Obsidian 插件商店安全审核
+- 🛡️ 补充安全与隐私说明，便于 Obsidian Community 审核识别网络与数据行为
 - 🤖 配置 pre-commit hook 和 GitHub Actions CI/CD
 
 ### v0.1.0

@@ -1,13 +1,34 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
 import fs from "fs"; // Added for file system operations
 import path from "path"; // Added for path manipulation
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
+import { builtinModules } from "node:module";
 
-// Load environment variables from .env file
-dotenv.config();
+function loadLocalEnvFile(envPath = ".env") {
+    if (!fs.existsSync(envPath)) return;
+
+    const envContent = fs.readFileSync(envPath, "utf8");
+    for (const line of envContent.split(/\r?\n/)) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith("#")) continue;
+
+        const separatorIndex = trimmedLine.indexOf("=");
+        if (separatorIndex === -1) continue;
+
+        const key = trimmedLine.slice(0, separatorIndex).trim();
+        let value = trimmedLine.slice(separatorIndex + 1).trim();
+
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        }
+
+        if (key && process.env[key] === undefined) {
+            process.env[key] = value;
+        }
+    }
+}
+
+loadLocalEnvFile();
 
 // 设置正确的字符编码处理
 process.stdout.setEncoding('utf8');
@@ -63,6 +84,9 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+const nodeBuiltins = Array.from(new Set(builtinModules.flatMap(moduleName => {
+    return moduleName.startsWith("node:") ? [moduleName, moduleName.slice(5)] : [moduleName, `node:${moduleName}`];
+})));
 
 // esbuild plugin to handle copying files after build with backup
 const copyPlugin = {
@@ -163,7 +187,7 @@ const context = await esbuild.context({
 		"@lezer/common",
 		"@lezer/highlight",
 		"@lezer/lr",
-		...builtins],
+		...nodeBuiltins],
 	format: "cjs",
 	target: "es2018",
 	logLevel: "info",

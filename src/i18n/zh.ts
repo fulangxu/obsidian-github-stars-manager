@@ -293,8 +293,8 @@ export const zh: TranslationKeys = {
         autoFetch: '自动获取',
         tokenLabel: '个人访问令牌',
         tokenPlaceholder: 'ghp_xxxxxxxxxxxx',
-        tokenDesc: '需要read:user和public_repo权限的GitHub个人访问令牌',
-        tokenDescShort: '需要repo权限的GitHub个人访问令牌',
+        tokenDesc: 'GitHub 个人访问令牌，建议使用 read:user 和 public_repo 最小权限',
+        tokenDescShort: '建议使用 read:user 和 public_repo 权限；仅需私有仓库数据时才使用 repo 权限',
         tokenInputPlaceholder: '输入您的GitHub个人访问令牌',
         howToGetToken: '如何获取令牌？',
         validateAndSave: '验证并保存',
@@ -310,7 +310,7 @@ export const zh: TranslationKeys = {
 
         // 单一令牌（向后兼容）
         githubToken: 'GitHub个人访问令牌',
-        githubTokenDesc: '用于访问您的GitHub星标仓库的令牌。需要repo权限。建议使用上方的多账号管理功能。',
+        githubTokenDesc: '用于访问您的 GitHub 星标仓库的令牌。建议使用 read:user 和 public_repo 最小权限；仅需私有仓库数据时才使用 repo 权限。建议使用上方的多账号管理功能。',
         githubTokenPlaceholder: '输入您的GitHub个人访问令牌',
 
         // 同步设置

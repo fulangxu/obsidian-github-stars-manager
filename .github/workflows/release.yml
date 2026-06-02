@@ -1,8 +1,9 @@
 name: Release Obsidian Plugin
 
 on:
-  release:
-    types: [created, published]  # 当在 GitHub 上创建或发布 Release 时触发
+  push:
+    tags:
+      - 'v*'  # 推送版本标签时自动创建 Release 并上传插件文件
   workflow_dispatch:  # 支持手动触发测试
 
 jobs:
@@ -38,8 +39,6 @@ jobs:
           main.js
           manifest.json
           styles.css
-          themes.css
-          versions.json
         retention-days: 30
 
   test:
@@ -61,8 +60,6 @@ jobs:
         test -f main.js && echo "✅ main.js exists" || (echo "❌ main.js missing" && exit 1)
         test -f manifest.json && echo "✅ manifest.json exists" || (echo "❌ manifest.json missing" && exit 1)
         test -f styles.css && echo "✅ styles.css exists" || (echo "❌ styles.css missing" && exit 1)
-        test -f themes.css && echo "✅ themes.css exists" || (echo "❌ themes.css missing" && exit 1)
-        test -f versions.json && echo "✅ versions.json exists" || (echo "❌ versions.json missing" && exit 1)
         echo "🎉 All required files are present!"
 
   validate:
@@ -145,9 +142,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: [build, test, validate]
-    if: github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
     - name: Checkout code
@@ -158,11 +157,13 @@ jobs:
       with:
         name: obsidian-github-stars-manager-build
 
-    - name: Create release archive
-      run: |
-        echo "📦 Creating release archive..."
-        zip -r obsidian-github-stars-manager.zip main.js manifest.json styles.css themes.css versions.json
-        ls -lh obsidian-github-stars-manager.zip
+    - name: Attest release assets
+      uses: actions/attest-build-provenance@v2
+      with:
+        subject-path: |
+          main.js
+          manifest.json
+          styles.css
 
     - name: Upload release assets
       uses: softprops/action-gh-release@v2
@@ -171,9 +172,6 @@ jobs:
           main.js
           manifest.json
           styles.css
-          themes.css
-          versions.json
-          obsidian-github-stars-manager.zip
         draft: false
         prerelease: false
         generate_release_notes: true
@@ -188,8 +186,5 @@ jobs:
         echo "  - main.js"
         echo "  - manifest.json"
         echo "  - styles.css"
-        echo "  - themes.css"
-        echo "  - versions.json"
-        echo "  - obsidian-github-stars-manager.zip"
         echo ""
         echo "✨ Release Notes automatically generated from commit history"

@@ -37,9 +37,29 @@ A powerful Obsidian plugin that allows you to manage and view your GitHub starre
 
 ### 🔒 Security & Privacy
 - 🔐 Secure authentication using GitHub Personal Access Token
-- 💾 All data stored locally, no upload to any third-party servers
-- 🛡️ Compliant with Obsidian plugin store security standards
+- 💾 GitHub tokens, repository cache, tags, and notes are stored in local plugin data
+- 🌐 Only connects to official GitHub services when syncing or validating tokens
 - ✅ Passed all eslint-plugin-obsidianmd rule validations
+
+## Security & Privacy
+
+GitHub Stars Manager is a local-first GitHub integration. It only connects to GitHub services when you configure an account, validate a token, sync repositories, or open GitHub-related links.
+
+Runtime external services:
+
+- `api.github.com`: validates GitHub tokens, reads the current user, fetches starred repositories, and fetches repository details
+- `github.com`: opens repository pages when you click repository links
+- `avatars.githubusercontent.com` or other GitHub avatar hosts: displays GitHub user and repository owner avatars
+
+This plugin does not:
+
+- upload vault content or note bodies
+- collect analytics or telemetry
+- track users
+- download or execute remote code
+- send your GitHub token to any service other than GitHub
+
+GitHub Personal Access Tokens are stored in local Obsidian plugin settings data inside your vault configuration. The plugin does not upload this data, but it is not an encrypted password vault. Use token expiration and the minimum scopes needed for your use case.
 
 ## Configuration
 
@@ -54,7 +74,7 @@ To use this plugin, you need to provide a GitHub Personal Access Token (PAT) wit
 5.  **Generate New Token:** Click the "Generate new token" button, then select "Generate new token (classic)".
 6.  **Token Description:** In the "Note" field, give your token a descriptive name, e.g., "Obsidian Stars Manager".
 7.  **Set Expiration:** Choose an appropriate expiration duration. For security, "No expiration" is not recommended.
-8.  **Select Scopes:** This is crucial. You need to grant permission to access your repositories. Check the top-level `repo` scope checkbox. This automatically selects all necessary sub-permissions for the plugin to read your starred repositories.
+8.  **Select Scopes:** Prefer the minimum required scopes. Reading public starred repositories usually only requires `read:user` and `public_repo`. Only use the broader `repo` scope if you specifically need access to private repository-related data.
 9.  **Generate Token:** Click the "Generate token" button at the bottom of the page.
 10. **Copy Token:** **Important!** GitHub will only show the full token once. Click the copy icon immediately to copy it and store it securely. **You won't be able to see the full token again after leaving this page.**
 11. **Use in Plugin:** Paste the copied token into the "GitHub Personal Access Token (PAT)" field in the "GitHub Stars Manager" settings tab within Obsidian.
@@ -96,7 +116,7 @@ You can quickly switch themes using the theme button at the top of the plugin in
 ### Manual Installation
 
 1. Download the latest `main.js`, `manifest.json`, and `styles.css`
-2. Copy these files to your vault: `VaultFolder/.obsidian/plugins/obsidian-github-stars-manager/`
+2. Copy these files to your vault: `VaultFolder/.obsidian/plugins/github-stars-manager/`
 3. Restart Obsidian
 4. Enable the plugin in settings
 
@@ -149,13 +169,20 @@ npm run version
 
 ## Changelog
 
-### v0.1.1 (Current Version)
+### v0.1.2 (Current Version)
+- 🛡️ Updated the minimum Obsidian version to 1.7.2 to match the official API requirements used by the plugin
+- 🔒 Added clearer security and privacy disclosures for GitHub services and local data storage
+- 🔑 Changed GitHub token guidance to prefer the minimum `read:user` and `public_repo` scopes
+- 📦 Improved the Release workflow to publish only Obsidian-supported plugin files and generate build provenance attestations
+- 🔧 Removed `builtin-modules` and `dotenv` from the build script to reduce review warnings
+
+### v0.1.1
 - 🏷️ Added Tag Chips input component with quick tag selection
 - ⭐ Added total stars count display feature
 - 🎨 Enhanced note card visibility and UI styling
 - 🔧 Enabled all 25 eslint-plugin-obsidianmd rules
 - 🐛 Fixed token error handling and error messages
-- 🛡️ Passed Obsidian plugin store security review
+- 🛡️ Added clearer security and privacy disclosures for Obsidian Community review
 - 🤖 Configured pre-commit hooks and GitHub Actions CI/CD
 
 ### v0.1.0
