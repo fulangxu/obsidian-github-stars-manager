@@ -1,1 +1,1 @@
-npx lint-staged
+OBSIDIAN_PLUGIN_DIR= npm run build

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=%23483699&label=downloads&query=%24%5B%22github-stars-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json)](https://obsidian.md/plugins?id=github-stars-manager)
 
-[简体中文 README](README.md) | [Usage Guide](USAGE_GUIDE_EN.md) | [使用指南](USAGE_GUIDE.md)
+[简体中文 README](README_zh.md) | [Usage Guide](USAGE_GUIDE_EN.md) | [使用指南](USAGE_GUIDE.md)
 
 A powerful Obsidian plugin that allows you to manage and view your GitHub starred repositories directly within Obsidian, with multi-account support, custom tags, smart search, and beautiful themes.
 
@@ -51,12 +51,19 @@ Runtime external services:
 - `github.com`: opens repository pages when you click repository links
 - `avatars.githubusercontent.com` or other GitHub avatar hosts: displays GitHub user and repository owner avatars
 
+Runtime Obsidian capabilities:
+
+- Vault file enumeration: used only to let you choose an existing Markdown note when linking a repository to a note
+- Vault write access: used only when exporting selected starred repositories to Markdown files in the export folder you configure
+- Clipboard write access: used only when you click the copy URL action for a repository link
+
 This plugin does not:
 
 - upload vault content or note bodies
 - collect analytics or telemetry
 - track users
 - download or execute remote code
+- read clipboard content
 - send your GitHub token to any service other than GitHub
 
 GitHub Personal Access Tokens are stored in local Obsidian plugin settings data inside your vault configuration. The plugin does not upload this data, but it is not an encrypted password vault. Use token expiration and the minimum scopes needed for your use case.
@@ -169,7 +176,12 @@ npm run version
 
 ## Changelog
 
-### v0.1.2 (Current Version)
+### v0.1.3 (Current Version)
+- 📝 Made the root README English-first for Obsidian Community review, while keeping the Simplified Chinese README in `README_zh.md`
+- 🔒 Added explicit runtime capability disclosures for vault file enumeration, vault writes, and clipboard writes
+- 🔧 Removed direct `eslint-plugin-import` and `lint-staged` development dependencies that triggered source review warnings
+
+### v0.1.2
 - 🛡️ Updated the minimum Obsidian version to 1.7.2 to match the official API requirements used by the plugin
 - 🔒 Added clearer security and privacy disclosures for GitHub services and local data storage
 - 🔑 Changed GitHub token guidance to prefer the minimum `read:user` and `public_repo` scopes

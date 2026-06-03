@@ -2,7 +2,6 @@ import tseslint from "typescript-eslint";
 import tsparser from "@typescript-eslint/parser";
 import obsidianmd from "eslint-plugin-obsidianmd";
 import sdl from "@microsoft/eslint-plugin-sdl";
-import importPlugin from "eslint-plugin-import";
 import globals from "globals";
 
 export default [
@@ -24,7 +23,6 @@ export default [
     plugins: {
       "@typescript-eslint": tseslint.plugin,
       "@microsoft/sdl": sdl,
-      "import": importPlugin,
       obsidianmd: obsidianmd
     },
     languageOptions: {
@@ -112,9 +110,6 @@ export default [
       // Microsoft SDL 安全规则
       "@microsoft/sdl/no-document-write": "error",
       "@microsoft/sdl/no-inner-html": "error",
-
-      // Import 插件规则
-      "import/no-extraneous-dependencies": "error",
 
       // Obsidian 插件专用规则（完整的 23 个推荐规则）
       "obsidianmd/commands/no-command-in-command-id": "error",
