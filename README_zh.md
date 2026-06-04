@@ -239,6 +239,23 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - 💡 分享给其他 Obsidian 用户
 - 💖 [赞助开发者](https://github.com/sponsors/EmberSparks)
 
+## Star History
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date&theme=dark"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
+  />
+</picture>
+
 ## 相关链接
 
 - [Obsidian 官网](https://obsidian.md)

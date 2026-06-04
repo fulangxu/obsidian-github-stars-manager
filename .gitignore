@@ -1,5 +1,5 @@
 # vscode
-.vscode 
+.vscode
 
 # Intellij
 *.iml
@@ -26,6 +26,7 @@ data.json
 
 # Claude-specific files
 .claude/
+.codex
 
 # Git backup
 .git.bak/
@@ -45,3 +46,6 @@ deploy-fixed.bat
 # Environment variables
 .env
 .ace-tool/
+
+# Local private notes
+doc/

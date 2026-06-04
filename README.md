@@ -228,6 +228,23 @@ If you find this plugin helpful, consider:
 - 💡 Sharing it with other Obsidian users
 - 💖 [Sponsor the developer](https://github.com/sponsors/EmberSparks)
 
+## Star History
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date&theme=dark"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
+  />
+</picture>
+
 ## Related Links
 
 - [Obsidian Official Website](https://obsidian.md)
