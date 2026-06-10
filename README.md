@@ -10,7 +10,7 @@
   <img src="assets/github-stars-manager-preview.png" alt="GitHub Stars Manager repository dashboard in Obsidian" width="100%">
 </p>
 
-A powerful Obsidian plugin that allows you to manage and view your GitHub starred repositories directly within Obsidian, with multi-account support, custom tags, smart search, and beautiful themes.
+A powerful Obsidian plugin that allows you to manage and view your GitHub starred repositories directly within Obsidian, with multi-account support, custom tags, smart search, and a polished Obsidian-native interface.
 
 ## ✨ Core Features
 
@@ -33,11 +33,11 @@ A powerful Obsidian plugin that allows you to manage and view your GitHub starre
 - 📊 Multi-dimensional sorting: by star time, name, language, star count, etc.
 - 🏷️ Advanced filtering based on tags
 
-### 🎨 Beautiful Themes
-- 🎨 **Default Theme**: Clean card layout that integrates seamlessly with Obsidian's native theme
-- 🌊 **Liquid Glass Theme**: iOS-style frosted glass effect with dynamic backgrounds and shimmer animations
+### 🎨 Polished Interface
+- 🎨 Clean Obsidian-native card layout that follows your vault's light/dark appearance
 - 📱 Responsive waterfall layout: Pinterest-style card display
-- ✨ Smooth animations and hover effects
+- 🧩 Compact toolbar and tag chips for quick scanning and filtering
+- ✨ Smooth hover feedback and readable card styling
 
 ### 🔒 Security & Privacy
 - 🔐 Secure authentication using GitHub Personal Access Token
@@ -100,20 +100,13 @@ To use this plugin, you need to provide a GitHub Personal Access Token (PAT) wit
 
 📖 **[View Detailed Usage Guide](USAGE_GUIDE_EN.md)** | [中文指南](USAGE_GUIDE.md)
 
-### Theme Switching
+### Interface Layout
 
-The plugin provides two visual themes:
+The plugin uses one consistent interface style that follows Obsidian's active appearance. There is no separate in-plugin theme switch.
 
-- **Default Theme**: Clean card layout that maintains consistency with Obsidian's native themes
-- **iOS Glass Theme**: iOS-style frosted glass effect with the following features:
-  - 🌈 Colorful gradient backgrounds for better visual contrast
-  - ✨ Dynamic floating animation background effects
-  - 🔍 Enhanced frosted glass blur effects
-  - 💫 Shimmer sweep animation on card hover
-  - 📱 Waterfall layout similar to Xiaohongshu's card display
-  - 🎯 Optimized font rendering to avoid blur issues on hover
-
-You can quickly switch themes using the theme button at the top of the plugin interface.
+- Responsive waterfall layout similar to Pinterest's card display
+- Repository cards include owner avatars, tags, notes, links, stars, forks, and update metadata
+- The toolbar keeps sync, search, account filtering, statistics, and tag filtering in one place
 
 ## Installation
 
@@ -183,6 +176,7 @@ npm run version
 ### v0.1.3 (Current Version)
 - 📝 Made the root README English-first for Obsidian Community review, while keeping the Simplified Chinese README in `README_zh.md`
 - 🔒 Added explicit runtime capability disclosures for vault file enumeration, vault writes, and clipboard writes
+- 🎨 Removed the in-plugin theme switch and standardized the interface on Obsidian's active appearance
 - 🔧 Removed direct `eslint-plugin-import` and `lint-staged` development dependencies that triggered source review warnings
 
 ### v0.1.2
@@ -204,7 +198,7 @@ npm run version
 ### v0.1.0
 - ✨ Initial release
 - 🎯 Multi-account GitHub Stars management
-- 🎨 Liquid Glass theme support
+- 🎨 Liquid Glass theme support at initial release; the in-plugin theme switch was removed in v0.1.3
 - 📱 Responsive waterfall layout
 - 🔍 Advanced search and filtering
 - 🏷️ Custom tags and notes functionality

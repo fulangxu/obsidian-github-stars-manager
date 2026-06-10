@@ -5,7 +5,7 @@
 ### 1️⃣ 初次设置（30秒）
 ```
 GitHub设置 → Personal access tokens → Generate new token (classic)
-权限：勾选 repo ✅
+权限：公开星标通常勾选 read:user + public_repo ✅
 复制令牌 → Obsidian设置 → GitHub Stars Manager → 粘贴令牌
 ```
 
@@ -51,11 +51,11 @@ GitHub设置 → Personal access tokens → Generate new token (classic)
   - 状态：active, archived, todo
 ```
 
-### 主题切换
+### 界面样式
 ```
-默认主题：简洁卡片，与Obsidian原生主题一致
-液态玻璃：iOS风格毛玻璃效果，彩色渐变背景
-切换方法：点击工具栏右侧主题按钮
+界面风格：简洁卡片，跟随 Obsidian 当前浅色/深色外观
+布局方式：响应式瀑布流，适合浏览大量仓库
+说明：插件内不再提供独立主题切换按钮
 ```
 
 ---
@@ -102,7 +102,7 @@ GitHub设置 → Personal access tokens → Generate new token (classic)
 解决：搜索范围包括名称、描述、语言、标签
 
 问题：卡片显示不全
-解决：调整窗口大小、切换主题、更新插件
+解决：调整窗口大小、切换 Obsidian 浅色/深色外观、更新插件
 ```
 
 ### 数据问题
@@ -149,7 +149,7 @@ GitHub设置 → Personal access tokens → Generate new token (classic)
 
 ### 🎨 界面优化
 ```
-主题选择：根据个人喜好选择合适主题
+外观选择：跟随 Obsidian 当前浅色/深色外观
 窗口大小：调整到合适的显示尺寸
 字体大小：配合Obsidian整体字体设置
 ```

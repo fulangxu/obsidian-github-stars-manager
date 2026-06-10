@@ -22,7 +22,8 @@
    ```
    - Visit [GitHub Settings](https://github.com/settings/tokens)
    - Create new Classic Token
-   - Check `repo` permission
+   - Prefer the minimum scopes: public starred repositories usually only need `read:user` and `public_repo`
+   - Only use the broader `repo` scope if you need private repository-related data
    - Copy token to plugin settings
 
 3. **Open Plugin View**
@@ -106,31 +107,21 @@ Existing Tags Example:
    - Repository card shows linked note
    - Note can jump back to repository
 
-### 🎨 Theme System
+### 🎨 Interface Layout
 
-#### Default Theme
-- Clean card layout
-- Consistent with Obsidian native themes
-- Responsive design
-- Masonry layout
+The plugin uses one consistent interface style that follows Obsidian's active appearance. There is no separate in-plugin theme switch.
 
-#### Liquid Glass Theme
-iOS-style visual experience:
+#### Card Layout
+- Clean Obsidian-native card styling
+- Responsive masonry layout
+- Supports light and dark appearance
+- Designed for quickly scanning many repositories
 
-**Visual Effects**
-- 🌈 Colorful gradient background
-- ✨ Dynamic floating animation
-- 🔍 Glass blur effects
-- 💫 Card hover shimmer animation
-
-**Interaction Optimization**
-- Smooth transition animations
-- Enhanced button feedback
-- Improved visual hierarchy
-
-**Switching Method**
-- Click theme toggle button in toolbar
-- Real-time switching, no restart required
+#### Interaction Details
+- Toolbar keeps sync, search, account filtering, statistics, and tag filtering in one place
+- Tag chips support quick filtering and management
+- Repository cards show avatars, tags, notes, links, stars, forks, and update metadata
+- Hover feedback is clear while minimizing layout shifts
 
 ### 👥 Multi-Account Management
 
@@ -233,7 +224,7 @@ Path: .obsidian/plugins/github-stars-manager/data.json
 **Q: Token invalid error?**
 A: Check the following:
 - Token copied completely
-- `repo` permission selected
+- Required scopes selected: public stars usually need `read:user` and `public_repo`; private repository-related data requires `repo`
 - Token not expired
 - Using Classic Token (not Fine-grained)
 
@@ -249,7 +240,7 @@ A: Possible causes:
 **Q: Repository cards not displaying properly?**
 A: Try these solutions:
 - Resize Obsidian window
-- Switch themes to check effect
+- Switch Obsidian between light and dark appearance to check the effect
 - Ensure plugin is latest version
 
 **Q: Search results inaccurate?**
