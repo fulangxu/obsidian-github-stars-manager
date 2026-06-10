@@ -6,6 +6,10 @@
 
 [简体中文 README](README_zh.md) | [Usage Guide](USAGE_GUIDE_EN.md) | [使用指南](USAGE_GUIDE.md)
 
+<p align="center">
+  <img src="assets/github-stars-manager-preview.png" alt="GitHub Stars Manager repository dashboard in Obsidian" width="100%">
+</p>
+
 A powerful Obsidian plugin that allows you to manage and view your GitHub starred repositories directly within Obsidian, with multi-account support, custom tags, smart search, and beautiful themes.
 
 ## ✨ Core Features
