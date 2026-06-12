@@ -30,51 +30,6 @@ function loadLocalEnvFile(envPath = ".env") {
 
 loadLocalEnvFile();
 
-// 设置正确的字符编码处理
-process.stdout.setEncoding('utf8');
-process.stderr.setEncoding('utf8');
-
-// 修复Windows中文路径显示问题的函数
-function fixChinesePathDisplay(pathStr) {
-    try {
-        // 直接使用Buffer进行编码转换
-        if (typeof pathStr === 'string') {
-            // 尝试多种编码修复方案
-            let fixedPath = pathStr;
-            
-            // 方案1：已知的乱码字符替换
-            const replacements = {
-                '鐨�': '的',
-                '榛�': '黑',
-                '鏇�': '曜',
-                '鐭�': '石',
-                '鐢�': '用',
-                '鎴�': '户'
-            };
-            
-            for (const [wrong, correct] of Object.entries(replacements)) {
-                fixedPath = fixedPath.replace(new RegExp(wrong, 'g'), correct);
-            }
-            
-            // 方案2：如果还有乱码，尝试编码转换
-            if (fixedPath.match(/[\u4e00-\u9fff]/g) && fixedPath.includes('鐨�')) {
-                try {
-                    // 尝试从GBK转UTF-8
-                    const buffer = Buffer.from(pathStr, 'binary');
-                    fixedPath = buffer.toString('utf8');
-                } catch (e) {
-                    // 如果转换失败，保持原样
-                }
-            }
-            
-            return fixedPath;
-        }
-        return pathStr;
-    } catch (error) {
-        console.warn('Path encoding fix failed:', error);
-        return pathStr;
-    }
-}
 
 const banner =
 `/*
@@ -126,16 +81,14 @@ const copyPlugin = {
                         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
                         const backupFile = path.join(backupDir, `${fileName}.${timestamp}.backup`);
                         fs.copyFileSync(targetFile, backupFile);
-                        // 修复中文路径显示
-                        const displayBackupPath = fixChinesePathDisplay(backupFile);
-                        console.log(`Backed up ${fileName} to ${displayBackupPath}`);
+                        
+                        console.log(`Backed up ${fileName} to ${backupFile}`);
                     }
 
                     // Copy new file
                     fs.copyFileSync(sourceFile, targetFile);
-                    // 修复中文路径显示
-                    const displayTargetDir = fixChinesePathDisplay(targetDir);
-                    console.log(`Copied ${fileName} to ${displayTargetDir}`);
+                    
+                    console.log(`Copied ${fileName} to ${targetDir}`);
                 } catch (err) {
                     console.error(`Error copying ${fileName}:`, err);
                 }
@@ -156,12 +109,9 @@ const copyPlugin = {
 
             // Copy manifest.json with backup
             backupAndCopy("manifest.json", path.join(targetDir, "manifest.json"), "manifest.json");
-
-            // 修复中文路径显示
-            const displayTargetDir = fixChinesePathDisplay(targetDir);
-            const displayBackupDir = fixChinesePathDisplay(backupDir);
-            console.log(`\n✅ Plugin files deployed to: ${displayTargetDir}`);
-            console.log(`📦 Backups stored in: ${displayBackupDir}`);
+            
+            console.log(`\n✅ Plugin files deployed to: ${targetDir}`);
+            console.log(`📦 Backups stored in: ${backupDir}`);
         });
     },
 };

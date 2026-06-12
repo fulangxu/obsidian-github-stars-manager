@@ -42,6 +42,7 @@ setup-env.bat
 setup-env.ps1
 deploy.bat
 deploy-fixed.bat
+deploy-wsl.sh
 
 # Environment variables
 .env
