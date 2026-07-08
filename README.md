@@ -6,245 +6,136 @@
 
 [简体中文 README](README_zh.md) | [Usage Guide](USAGE_GUIDE_EN.md) | [使用指南](USAGE_GUIDE.md)
 
-<p align="center">
-  <img src="assets/github-stars-manager-preview.png" alt="GitHub Stars Manager repository dashboard in Obsidian" width="100%">
-</p>
+GitHub Stars Manager is an Obsidian plugin for turning GitHub Stars into a maintainable open-source project knowledge base. It syncs starred repositories into Obsidian, then helps you triage them through Inbox, multi-level categories, tags, personal reviews, linked notes, and reusable Markdown templates.
 
-A powerful Obsidian plugin that allows you to manage and view your GitHub starred repositories directly within Obsidian, with multi-account support, custom tags, smart search, and a polished Obsidian-native interface.
+## Highlights
 
-## ✨ Core Features
+- Dashboard for collection health, Inbox size, classified projects, linked notes, archived projects, language distribution, review status, and note coverage.
+- Inbox workflow for newly synced or unclassified repositories.
+- Multi-level category tree for long-term knowledge organization.
+- Tag search, tag chips, and a compact tag manager with add, search, select, and delete actions.
+- Repository detail inspector with editable category, tags, status, rating, personal summary, review, notes, links, and linked note path.
+- Auto-save in the repository detail panel.
+- Note generation with configurable root folder, filename rule, built-in templates, and custom templates.
+- Obsidian-native UI that follows the active Obsidian theme variables.
+- Local-first storage. Tokens, repository cache, taxonomy, reviews, and note links stay in local plugin data.
 
-### 📊 Repository Management
-- 📋 View all your starred GitHub repositories within Obsidian
-- 👥 **Multi-account support**: Manage stars from multiple GitHub accounts simultaneously
-- ⭐ **Star statistics**: Real-time display of total repository count and stars
-- 🔄 Smart sync: Automatic or manual synchronization of starred repositories
-- 🔄 **Account management**: Enable/disable sync for specific accounts individually
+## Knowledge Management Workflow
 
-### 🏷️ Personalization
-- 🏷️ **Tag Chips Component**: Intuitive tag chip input with quick selection of existing tags
-- 📝 Add custom tags and notes to repositories
-- 🔗 Link repositories to Obsidian note files
-- 💾 All annotation data stored locally for privacy protection
+1. Sync GitHub Stars.
+2. New unclassified repositories enter Inbox.
+3. Review projects from Inbox or smart views such as No Notes, No Links, Needs Review, and Low Rating.
+4. Assign a multi-level category and tags.
+5. Add personal summary, evaluation, notes, links, and rating.
+6. Generate or link an Obsidian Markdown note.
+7. Use categories, tags, search, backlinks, and generated notes to revisit projects later.
 
-### 🔍 Smart Search & Filter
-- 🔎 Real-time search by name, description, language, tags
-- 🎯 Support for regular expressions and fuzzy matching
-- 📊 Multi-dimensional sorting: by star time, name, language, star count, etc.
-- 🏷️ Advanced filtering based on tags
+## Interface
 
-### 🎨 Polished Interface
-- 🎨 Clean Obsidian-native card layout that follows your vault's light/dark appearance
-- 📱 Responsive waterfall layout: Pinterest-style card display
-- 🧩 Compact toolbar and tag chips for quick scanning and filtering
-- ✨ Smooth hover feedback and readable card styling
+- **Home**: Dashboard metrics, charts, Inbox queue, and recently organized projects.
+- **Library**: Home, Inbox, All, Recently added, and Archived.
+- **Categories**: Multi-level category tree. Right-click the category area to create a top-level category. Right-click a category to create a subcategory or delete the category.
+- **Filter**: Use the toolbar filter drawer for status, category, tag, language, activity, and note filters.
+- **Project detail**: Click a repository card to open the editable detail panel. The panel can be resized with the mouse.
+- **Settings**: Configure language, accounts, tag manager, note settings, templates, and note behavior.
 
-### 🔒 Security & Privacy
-- 🔐 Secure authentication using GitHub Personal Access Token
-- 💾 GitHub tokens, repository cache, tags, and notes are stored in local plugin data
-- 🌐 Only connects to official GitHub services when syncing or validating tokens
-- ✅ Passed all eslint-plugin-obsidianmd rule validations
+## Notes And Templates
 
-## Security & Privacy
+The plugin can create project notes under a configured root folder. By default, note paths follow the repository category:
 
-GitHub Stars Manager is a local-first GitHub integration. It only connects to GitHub services when you configure an account, validate a token, sync repositories, or open GitHub-related links.
+```text
+GitHub Stars/Robotics/PX4/Flight Control/PX4-PX4-Autopilot.md
+```
+
+The default note template includes repository metadata, category, tags, status, rating, personal summary, personal review, project links, and notes. The settings page also provides research, implementation, and custom template modes.
+
+Template variables include:
+
+```text
+{{repo_name}}, {{full_name}}, {{owner}}, {{description}}, {{github_url}},
+{{language}}, {{stars}}, {{forks}}, {{topics}}, {{category}}, {{tags}},
+{{status}}, {{rating}}, {{personal_summary}}, {{personal_review}},
+{{project_links}}, {{notes}}, {{created_at}}, {{updated_at}},
+{{note_created_at}}, {{note_updated_at}}
+```
+
+The plugin updates controlled metadata when generating notes. User-written note content should be kept in the user-editable sections.
+
+## Security And Privacy
+
+GitHub Stars Manager is local-first. It connects to GitHub only when validating accounts, syncing repositories, or opening GitHub links.
 
 Runtime external services:
 
-- `api.github.com`: validates GitHub tokens, reads the current user, fetches starred repositories, and fetches repository details
-- `github.com`: opens repository pages when you click repository links
-- `avatars.githubusercontent.com` or other GitHub avatar hosts: displays GitHub user and repository owner avatars
+- `api.github.com`: validates GitHub tokens and fetches starred repositories.
+- `github.com`: opens repository pages.
+- GitHub avatar hosts: display repository owner avatars.
 
 Runtime Obsidian capabilities:
 
-- Vault file enumeration: used only to let you choose an existing Markdown note when linking a repository to a note
-- Vault write access: used only when exporting selected starred repositories to Markdown files in the export folder you configure
-- Clipboard write access: used only when you click the copy URL action for a repository link
+- Vault file reads: verify linked note existence and open existing notes.
+- Vault writes: create generated repository notes and export files.
+- Clipboard writes: copy repository URLs when requested.
 
-This plugin does not:
+The plugin does not upload vault content, collect analytics, track users, execute remote code, or send GitHub tokens to services other than GitHub.
 
-- upload vault content or note bodies
-- collect analytics or telemetry
-- track users
-- download or execute remote code
-- read clipboard content
-- send your GitHub token to any service other than GitHub
+## GitHub Token
 
-GitHub Personal Access Tokens are stored in local Obsidian plugin settings data inside your vault configuration. The plugin does not upload this data, but it is not an encrypted password vault. Use token expiration and the minimum scopes needed for your use case.
+Create a GitHub Personal Access Token from <https://github.com/settings/tokens>. For public starred repositories, prefer the minimum scopes:
 
-## Configuration
+- `read:user`
+- `public_repo`
 
-To use this plugin, you need to provide a GitHub Personal Access Token (PAT) with the necessary permissions to read your starred repositories.
-
-**How to get a GitHub Personal Access Token (PAT):**
-
-1.  **Login to GitHub:** Visit [github.com](https://github.com) and log in to your account.
-2.  **Access Settings:** Click your profile picture in the top-right corner, then select "Settings".
-3.  **Developer Settings:** In the left sidebar, scroll down and click "Developer settings".
-4.  **Personal Access Tokens:** In the left sidebar, select "Personal access tokens", then choose "Tokens (classic)". *(Note: Please select Classic Token, as Fine-grained tokens might require more complex permission setup).*
-5.  **Generate New Token:** Click the "Generate new token" button, then select "Generate new token (classic)".
-6.  **Token Description:** In the "Note" field, give your token a descriptive name, e.g., "Obsidian Stars Manager".
-7.  **Set Expiration:** Choose an appropriate expiration duration. For security, "No expiration" is not recommended.
-8.  **Select Scopes:** Prefer the minimum required scopes. Reading public starred repositories usually only requires `read:user` and `public_repo`. Only use the broader `repo` scope if you specifically need access to private repository-related data.
-9.  **Generate Token:** Click the "Generate token" button at the bottom of the page.
-10. **Copy Token:** **Important!** GitHub will only show the full token once. Click the copy icon immediately to copy it and store it securely. **You won't be able to see the full token again after leaving this page.**
-11. **Use in Plugin:** Paste the copied token into the "GitHub Personal Access Token (PAT)" field in the "GitHub Stars Manager" settings tab within Obsidian.
-
-## Usage
-
-1. After installing and enabling the plugin, a GitHub star icon will appear in the left panel
-2. Click the icon to open the starred repositories view
-3. Configure your GitHub PAT in the plugin settings on first use
-4. Click the "Sync" button to fetch your starred repositories
-5. You can add personal notes, tags, or link repositories to existing Obsidian notes
-
-📖 **[View Detailed Usage Guide](USAGE_GUIDE_EN.md)** | [中文指南](USAGE_GUIDE.md)
-
-### Interface Layout
-
-The plugin uses one consistent interface style that follows Obsidian's active appearance. There is no separate in-plugin theme switch.
-
-- Responsive waterfall layout similar to Pinterest's card display
-- Repository cards include owner avatars, tags, notes, links, stars, forks, and update metadata
-- The toolbar keeps sync, search, account filtering, statistics, and tag filtering in one place
+Use `repo` only if you need private repository-related data. Tokens are stored in local Obsidian plugin data and are not encrypted by this plugin, so use expiration dates and minimum permissions.
 
 ## Installation
 
-### From Obsidian Community Plugins (Recommended)
+### Community Plugin
 
-1. Open Obsidian Settings
-2. Go to "Community plugins" tab
-3. Search for "GitHub Stars Manager"
-4. Click Install and enable the plugin
+1. Open Obsidian Settings.
+2. Go to Community plugins.
+3. Search for `GitHub Stars Manager`.
+4. Install and enable the plugin.
 
 ### Manual Installation
 
-1. Download the latest `main.js`, `manifest.json`, and `styles.css`
-2. Copy these files to your vault: `VaultFolder/.obsidian/plugins/github-stars-manager/`
-3. Restart Obsidian
-4. Enable the plugin in settings
+1. Download `main.js`, `manifest.json`, and `styles.css` from a release.
+2. Copy them to:
+
+```text
+VaultFolder/.obsidian/plugins/github-stars-manager/
+```
+
+3. Restart Obsidian.
+4. Enable the plugin in Community plugins.
 
 ## Development
 
-### Requirements
-
-- Node.js 16+
-- npm or yarn
-
-### Development Commands
-
 ```bash
-# Install dependencies
 npm install
-
-# Development mode (watch for changes)
 npm run dev
-
-# Production build
 npm run build
-
-# Version bump
-npm run version
-```
-
-### Tech Stack
-
-- **TypeScript**: Type-safe JavaScript superset
-- **Obsidian API**: Plugin development framework
-- **GitHub REST API**: Access GitHub data via @octokit/rest
-- **CSS3**: Modern styling and animation effects
-- **esbuild**: Fast JavaScript bundler
-
-### Project Structure
-
-```
-├── src/
-│   ├── main.ts          # Main plugin class
-│   ├── view.ts          # Starred repositories view
-│   ├── settings.ts      # Plugin settings
-│   ├── modal.ts         # Edit modal dialogs
-│   ├── githubService.ts # GitHub API service
-│   └── types.ts         # TypeScript type definitions
-├── main.ts              # Plugin entry point
-├── manifest.json        # Plugin manifest
-├── styles.css          # Stylesheet
-└── README.md           # Documentation
+npm run lint
 ```
 
 ## Changelog
 
-### v0.1.3 (Current Version)
-- 📝 Made the root README English-first for Obsidian Community review, while keeping the Simplified Chinese README in `README_zh.md`
-- 🔒 Added explicit runtime capability disclosures for vault file enumeration, vault writes, and clipboard writes
-- 🎨 Removed the in-plugin theme switch and standardized the interface on Obsidian's active appearance
-- 🔧 Removed direct `eslint-plugin-import` and `lint-staged` development dependencies that triggered source review warnings
+### v0.2.0
 
-### v0.1.2
-- 🛡️ Updated the minimum Obsidian version to 1.7.2 to match the official API requirements used by the plugin
-- 🔒 Added clearer security and privacy disclosures for GitHub services and local data storage
-- 🔑 Changed GitHub token guidance to prefer the minimum `read:user` and `public_repo` scopes
-- 📦 Improved the Release workflow to publish only Obsidian-supported plugin files and generate build provenance attestations
-- 🔧 Removed `builtin-modules` and `dotenv` from the build script to reduce review warnings
+- Repositioned the plugin as a GitHub Star knowledge management system.
+- Added Dashboard, Inbox workflow, smart views, and multi-level categories.
+- Added editable repository detail panel with auto-save and resizable width.
+- Added tag manager with compact search, selection, and delete workflow.
+- Added note settings, built-in templates, custom template editing, and category-based note paths.
+- Improved linked note handling so deleted notes are no longer treated as existing notes.
+- Updated documentation for the new KMS workflow.
 
-### v0.1.1
-- 🏷️ Added Tag Chips input component with quick tag selection
-- ⭐ Added total stars count display feature
-- 🎨 Enhanced note card visibility and UI styling
-- 🔧 Enabled all 25 eslint-plugin-obsidianmd rules
-- 🐛 Fixed token error handling and error messages
-- 🛡️ Added clearer security and privacy disclosures for Obsidian Community review
-- 🤖 Configured pre-commit hooks and GitHub Actions CI/CD
+### v0.1.3
 
-### v0.1.0
-- ✨ Initial release
-- 🎯 Multi-account GitHub Stars management
-- 🎨 Liquid Glass theme support at initial release; the in-plugin theme switch was removed in v0.1.3
-- 📱 Responsive waterfall layout
-- 🔍 Advanced search and filtering
-- 🏷️ Custom tags and notes functionality
+- Made the root README English-first for Obsidian Community review.
+- Added clearer runtime capability disclosures.
+- Standardized the UI on Obsidian's active appearance.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
-
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## Support
-
-If you find this plugin helpful, consider:
-
-- ⭐ Starring the project
-- 🐛 Reporting bugs or suggesting improvements
-- 💡 Sharing it with other Obsidian users
-- 💖 [Sponsor the developer](https://github.com/sponsors/EmberSparks)
-
-## Star History
-
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date&theme=dark"
-  />
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
-  />
-  <img
-    alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
-  />
-</picture>
-
-## Related Links
-
-- [Obsidian Official Website](https://obsidian.md)
-- [GitHub API Documentation](https://docs.github.com/en/rest)
-- [Plugin Development Documentation](https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin)
+MIT License. See [LICENSE](LICENSE).

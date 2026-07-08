@@ -66,6 +66,18 @@ export const DEFAULT_SETTINGS: GithubStarsSettings = {
     enableExport: true, // 默认启用导出功能
     includeProperties: true, // 默认启用Properties
     propertiesTemplate: DEFAULT_PROPERTIES_TEMPLATE, // 默认Properties模板
+    noteSettings: {
+        rootFolder: 'GitHub Stars',
+        filenameTemplate: '{{owner}}-{{name}}',
+        templateId: 'default',
+        customTemplate: '',
+        moveStrategy: 'auto',
+        openAfterCreate: true,
+        autoUpdateManagedSection: true,
+        autoWriteCategoryLinks: true,
+        autoWriteTagLinks: true,
+        autoCreateCategoryIndex: false
+    },
 };
 
 export class GithubStarsSettingTab extends PluginSettingTab {
@@ -324,6 +336,8 @@ export class GithubStarsSettingTab extends PluginSettingTab {
         if (this.plugin.settings.enableExport) {
             this.displayPropertiesSection(exportSection);
         }
+
+        this.displayNoteSettingsSection(exportSection);
     }
 
     /**
@@ -665,6 +679,117 @@ export class GithubStarsSettingTab extends PluginSettingTab {
     /**
      * 显示Properties模板配置区域
      */
+    /* eslint-disable obsidianmd/ui/sentence-case */
+    private displayNoteSettingsSection(containerEl: HTMLElement): void {
+        const noteSettings = this.plugin.settings.noteSettings;
+        const noteSection = this.createSettingsSection(containerEl);
+        noteSection.addClass('github-stars-note-settings-section');
+
+        new Setting(noteSection)
+            .setName(t('settings.noteRootFolder'))
+            .setDesc(t('settings.noteRootFolderDesc'))
+            .addText(text => text
+                .setPlaceholder('GitHub Stars')
+                .setValue(noteSettings.rootFolder)
+                .onChange(async (value) => {
+                    noteSettings.rootFolder = value.trim() || 'GitHub Stars';
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(noteSection)
+            .setName(t('settings.noteFilenameTemplate'))
+            .setDesc(t('settings.noteFilenameTemplateDesc'))
+            .addText(text => text
+                .setPlaceholder('owner-repository')
+                .setValue(noteSettings.filenameTemplate)
+                .onChange(async (value) => {
+                    noteSettings.filenameTemplate = value.trim() || '{{owner}}-{{name}}';
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(noteSection)
+            .setName('Note template')
+            .setDesc('Choose the structure used when creating repository detail notes.')
+            .addDropdown(dropdown => dropdown
+                .addOption('default', 'Default project properties')
+                .addOption('research', 'Research review')
+                .addOption('implementation', 'Implementation notes')
+                .addOption('custom', 'Custom template')
+                .setValue(noteSettings.templateId || 'default')
+                .onChange(async (value: 'default' | 'research' | 'implementation' | 'custom') => {
+                    noteSettings.templateId = value;
+                    await this.plugin.saveSettings();
+                    this.display();
+                })
+            );
+
+        if ((noteSettings.templateId || 'default') === 'custom') {
+            new Setting(noteSection)
+                .setName('Custom note template')
+                .setDesc('Supports variables like {{full_name}}, {{description}}, {{github_url}}, {{language}}, {{stars}}, {{forks}}, {{category}}, {{tags}}, {{status}}, {{rating}}, {{personal_summary}}, {{personal_review}}, {{project_links}}, {{notes}}.')
+                .addTextArea(text => {
+                    text.inputEl.rows = 10;
+                    text.inputEl.addClass('github-stars-note-template-textarea');
+                    text.setPlaceholder('# {{full_name}}\n\n## Project properties\n\n- GitHub: {{github_url}}\n- Category: {{category}}\n\n## My notes\n\n{{notes}}')
+                        .setValue(noteSettings.customTemplate || '')
+                        .onChange(async (value) => {
+                            noteSettings.customTemplate = value;
+                            await this.plugin.saveSettings();
+                        });
+                });
+        }
+
+        new Setting(noteSection)
+            .setName(t('settings.noteMoveStrategy'))
+            .setDesc(t('settings.noteMoveStrategyDesc'))
+            .addDropdown(dropdown => dropdown
+                .addOption('auto', t('settings.noteMoveStrategyAuto'))
+                .addOption('keep', t('settings.noteMoveStrategyKeep'))
+                .addOption('ask', t('settings.noteMoveStrategyAsk'))
+                .setValue(noteSettings.moveStrategy)
+                .onChange(async (value: 'auto' | 'keep' | 'ask') => {
+                    noteSettings.moveStrategy = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(noteSection)
+            .setName(t('settings.noteOpenAfterCreate'))
+            .setDesc(t('settings.noteOpenAfterCreateDesc'))
+            .addToggle(toggle => toggle
+                .setValue(noteSettings.openAfterCreate)
+                .onChange(async (value) => {
+                    noteSettings.openAfterCreate = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(noteSection)
+            .setName(t('settings.noteWriteCategoryLinks'))
+            .setDesc(t('settings.noteWriteCategoryLinksDesc'))
+            .addToggle(toggle => toggle
+                .setValue(noteSettings.autoWriteCategoryLinks)
+                .onChange(async (value) => {
+                    noteSettings.autoWriteCategoryLinks = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(noteSection)
+            .setName(t('settings.noteWriteTagLinks'))
+            .setDesc(t('settings.noteWriteTagLinksDesc'))
+            .addToggle(toggle => toggle
+                .setValue(noteSettings.autoWriteTagLinks)
+                .onChange(async (value) => {
+                    noteSettings.autoWriteTagLinks = value;
+                    await this.plugin.saveSettings();
+                })
+            );
+    }
+    /* eslint-enable obsidianmd/ui/sentence-case */
+
     private displayPropertiesSection(containerEl: HTMLElement): void {
         // 启用Properties开关
         const includePropertiesSetting = new Setting(containerEl)

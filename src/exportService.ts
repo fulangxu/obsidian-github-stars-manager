@@ -1,5 +1,5 @@
 import { TFile, Vault, normalizePath, Modal, App } from 'obsidian';
-import { GithubRepository, UserRepoEnhancements, ExportOptions, ExportResult, RepoExportData, DEFAULT_EXPORT_OPTIONS } from './types';
+import { GithubRepository, UserRepoEnhancements, ExportOptions, ExportResult, RepoExportData, DEFAULT_EXPORT_OPTIONS, NoteSettings } from './types';
 import { EmojiUtils } from './emojiUtils';
 import { t } from './i18n';
 
@@ -102,6 +102,40 @@ export class ExportService {
         }
     }
 
+    async createRepositoryDetailNote(
+        repository: GithubRepository,
+        userEnhancements: UserRepoEnhancements | undefined,
+        options: Partial<ExportOptions> = {},
+        noteSettings?: NoteSettings
+    ): Promise<string | null> {
+        const exportOptions = {
+            ...DEFAULT_EXPORT_OPTIONS,
+            ...options,
+            targetFolder: noteSettings?.rootFolder || options.targetFolder || DEFAULT_EXPORT_OPTIONS.targetFolder,
+            filenameTemplate: noteSettings?.filenameTemplate || options.filenameTemplate || DEFAULT_EXPORT_OPTIONS.filenameTemplate,
+            noteTemplateId: noteSettings?.templateId || 'default',
+            customNoteTemplate: noteSettings?.customTemplate || '',
+            overwriteExisting: true
+        };
+
+        try {
+            const exportData = this.generateRepoExportData(repository, userEnhancements, exportOptions);
+            const filePath = this.generateRepositoryNotePath(exportData, exportOptions);
+            await this.ensureFolderExists(filePath.split('/').slice(0, -1).join('/'));
+            const content = await this.mergeWithExistingUserSection(filePath, exportData.content);
+            const existingFile = this.vault.getAbstractFileByPath(filePath);
+            if (existingFile instanceof TFile) {
+                await this.vault.modify(existingFile, content);
+            } else {
+                await this.vault.create(filePath, content);
+            }
+            return filePath;
+        } catch (error) {
+            console.error('Create repository detail note failed:', error);
+            return null;
+        }
+    }
+
     /**
      * 生成单个仓库的导出数据
      */
@@ -128,7 +162,7 @@ export class ExportService {
         exportData: RepoExportData,
         options: ExportOptions
     ): Promise<boolean> {
-        const filePath = normalizePath(`${options.targetFolder}/${exportData.filename}.md`);
+        const filePath = this.generateRepositoryNotePath(exportData, options);
 
         // 检查文件是否已存在
         const existingFile = this.vault.getAbstractFileByPath(filePath);
@@ -212,7 +246,7 @@ export class ExportService {
                     
                     // For checkbox type, the value can be 'true' or 'false', so we don't check trim()
                     if (property.type === 'checkbox' || value.trim()) {
-                        lines.push(`${property.key}: ${value}`);
+                        lines.push(`${property.key}: ${this.formatYamlPropertyValue(value, property.type)}`);
                     }
                 }
             }
@@ -222,8 +256,339 @@ export class ExportService {
         // 对整个内容应用emoji保护
         let content = lines.join('\n');
         content = EmojiUtils.restoreEmojis(content);
-        
-        return content;
+
+        const body = this.generateMarkdownBody(repository, enhancements, options);
+        return [content, body].filter((part) => part.trim().length > 0).join('\n\n');
+    }
+
+    private generateRepositoryNotePath(exportData: RepoExportData, options: ExportOptions): string {
+        const categoryPath = Array.isArray(exportData.enhancements?.categoryPath)
+            ? exportData.enhancements.categoryPath
+                .map((segment) => this.sanitizePathSegment(segment))
+                .filter((segment) => segment.length > 0)
+            : [];
+        return normalizePath([
+            options.targetFolder,
+            ...categoryPath,
+            `${exportData.filename}.md`
+        ].join('/'));
+    }
+
+    private sanitizePathSegment(segment: string): string {
+        return segment.trim().replace(/[<>:"\\|?*]/g, '-').replace(/\//g, '-');
+    }
+
+    private async mergeWithExistingUserSection(filePath: string, nextContent: string): Promise<string> {
+        const existingFile = this.vault.getAbstractFileByPath(filePath);
+        if (!(existingFile instanceof TFile)) {
+            return nextContent;
+        }
+        const existingContent = await this.vault.read(existingFile);
+        const marker = '## My notes';
+        const existingMarkerIndex = existingContent.indexOf(marker);
+        if (existingMarkerIndex === -1) {
+            return nextContent;
+        }
+        const nextMarkerIndex = nextContent.indexOf(marker);
+        if (nextMarkerIndex === -1) {
+            return nextContent;
+        }
+        return `${nextContent.slice(0, nextMarkerIndex).trimEnd()}\n\n${existingContent.slice(existingMarkerIndex).trimStart()}`;
+    }
+
+    private generateMarkdownBody(
+        repository: GithubRepository,
+        enhancements: UserRepoEnhancements | undefined,
+        options: ExportOptions
+    ): string {
+        const lines: string[] = [];
+        const categoryPath = Array.isArray(enhancements?.categoryPath)
+            ? enhancements.categoryPath.filter((segment) => segment.trim().length > 0)
+            : [];
+        const tags = Array.isArray(enhancements?.tags) ? enhancements.tags : [];
+        const projectLinks = Array.isArray(enhancements?.project_links) ? enhancements.project_links : [];
+
+        const renderedTemplate = this.renderConfiguredNoteTemplate(repository, enhancements, options, categoryPath, tags, projectLinks);
+        if (renderedTemplate) {
+            return EmojiUtils.restoreEmojis(renderedTemplate);
+        }
+
+        lines.push(`# ${repository.full_name || repository.name}`);
+        lines.push('');
+        if (repository.description) {
+            lines.push(`> ${repository.description}`);
+            lines.push('');
+        }
+
+        lines.push('## Project overview');
+        lines.push('');
+        lines.push(`- GitHub: ${repository.html_url}`);
+        lines.push(`- Owner: ${repository.owner?.login || ''}`);
+        lines.push(`- Language: ${repository.language || 'Unknown'}`);
+        if (options.includeStats) {
+            lines.push(`- Stars: ${repository.stargazers_count || 0}`);
+            lines.push(`- Forks: ${repository.forks_count || 0}`);
+            lines.push(`- Open issues: ${repository.open_issues_count || 0}`);
+        }
+        if (categoryPath.length > 0) {
+            lines.push(`- Category: ${categoryPath.join(' / ')}`);
+        }
+        if (repository.starred_at) {
+            lines.push(`- Starred at: ${this.formatDate(repository.starred_at)}`);
+        }
+        lines.push('');
+
+        if (options.includeTopics && repository.topics && repository.topics.length > 0) {
+            lines.push('## GitHub topics');
+            lines.push('');
+            repository.topics.forEach((topic) => lines.push(`- ${topic}`));
+            lines.push('');
+        }
+
+        if (options.includeEnhancements) {
+            lines.push('## Personal interpretation');
+            lines.push('');
+            if (enhancements?.personalSummary?.trim()) {
+                lines.push(`**Summary:** ${enhancements.personalSummary.trim()}`);
+                lines.push('');
+            }
+            if (enhancements?.personalReview?.trim()) {
+                lines.push(enhancements.personalReview.trim());
+            } else {
+                lines.push('- Why this project matters: ');
+                lines.push('- Best use case: ');
+                lines.push('- Integration idea: ');
+                lines.push('- Risks or limitations: ');
+            }
+            lines.push('');
+
+            lines.push('## Local tags');
+            lines.push('');
+            if (tags.length > 0) {
+                tags.forEach((tag) => lines.push(`- ${tag}`));
+            } else {
+                lines.push('- ');
+            }
+            lines.push('');
+
+            lines.push('## Related links');
+            lines.push('');
+            if (projectLinks.length > 0) {
+                projectLinks.forEach((link) => lines.push(`- [${link.label}](${link.url})`));
+            } else {
+                lines.push('- ');
+            }
+            lines.push('');
+        }
+
+        lines.push('## Obsidian links');
+        lines.push('');
+        if (categoryPath.length > 0) {
+            lines.push(`- Category: ${categoryPath.map((segment, index) => `[[${categoryPath.slice(0, index + 1).join('/')}|${segment}]]`).join(' / ')}`);
+        }
+        if (tags.length > 0) {
+            lines.push(`- Tags: ${tags.map((tag) => `[[${tag}]]`).join(', ')}`);
+        }
+        if (categoryPath.length === 0 && tags.length === 0) {
+            lines.push('- ');
+        }
+        lines.push('');
+
+        lines.push('## Review checklist');
+        lines.push('');
+        lines.push('- [ ] Read README and installation docs');
+        lines.push('- [ ] Identify core dependency or runtime requirements');
+        lines.push('- [ ] Check maintenance activity and issue health');
+        lines.push('- [ ] Decide whether to keep, archive, or build a demo');
+        lines.push('');
+        lines.push('## My notes');
+        lines.push('');
+        if (enhancements?.notes?.trim()) {
+            lines.push(enhancements.notes.trim());
+        } else {
+            lines.push('Write long-form usage notes, source reading records, experiments, and caveats here.');
+        }
+
+        return EmojiUtils.restoreEmojis(lines.join('\n'));
+    }
+
+    private renderConfiguredNoteTemplate(
+        repository: GithubRepository,
+        enhancements: UserRepoEnhancements | undefined,
+        options: ExportOptions,
+        categoryPath: string[],
+        tags: string[],
+        projectLinks: Array<{ label: string; url: string }>
+    ): string | null {
+        const templateId = options.noteTemplateId || 'default';
+        const customTemplate = options.customNoteTemplate?.trim();
+        const templates: Record<string, string> = {
+            default: `# {{full_name}}
+
+> {{description}}
+
+## Project properties
+
+- GitHub: {{github_url}}
+- Owner: {{owner}}
+- Language: {{language}}
+- Stars: {{stars}}
+- Forks: {{forks}}
+- Category: {{category}}
+- Tags: {{tags}}
+- Status: {{status}}
+- Rating: {{rating}}
+- Starred at: {{starred_at}}
+
+## Personal interpretation
+
+**Summary:** {{personal_summary}}
+
+{{personal_review}}
+
+## Related links
+
+{{project_links}}
+
+## Obsidian links
+
+{{obsidian_links}}
+
+## My notes
+
+{{notes}}`,
+            research: `# {{full_name}} Research Review
+
+## Why it matters
+
+{{personal_summary}}
+
+## Technical reading
+
+- Core idea:
+- Architecture:
+- Important modules:
+- Related papers:
+
+## Evaluation
+
+{{personal_review}}
+
+## Reproduction notes
+
+- Environment:
+- Install:
+- Test command:
+- Known issues:
+
+## Project properties
+
+- URL: {{github_url}}
+- Language: {{language}}
+- Stars: {{stars}}
+- Category: {{category}}
+- Tags: {{tags}}
+
+## My notes
+
+{{notes}}`,
+            implementation: `# {{full_name}} Implementation Notes
+
+## Use case
+
+{{personal_summary}}
+
+## Quick facts
+
+- GitHub: {{github_url}}
+- Language: {{language}}
+- Stars: {{stars}}
+- Forks: {{forks}}
+- Category: {{category}}
+- Status: {{status}}
+- Rating: {{rating}}
+
+## How to use
+
+- Install:
+- Minimal example:
+- Integration points:
+- Version constraints:
+
+## Links
+
+{{project_links}}
+
+## Review
+
+{{personal_review}}
+
+## My notes
+
+{{notes}}`
+        };
+        const template = templateId === 'custom' ? customTemplate : templates[templateId];
+        if (!template) return null;
+        return this.replaceNoteTemplateVariables(template, repository, enhancements, categoryPath, tags, projectLinks);
+    }
+
+    private replaceNoteTemplateVariables(
+        template: string,
+        repository: GithubRepository,
+        enhancements: UserRepoEnhancements | undefined,
+        categoryPath: string[],
+        tags: string[],
+        projectLinks: Array<{ label: string; url: string }>
+    ): string {
+        const replacements: Record<string, string> = {
+            repo_name: repository.name || '',
+            name: repository.name || '',
+            full_name: repository.full_name || '',
+            owner: repository.owner?.login || '',
+            description: repository.description || '',
+            github_url: repository.html_url || '',
+            url: repository.html_url || '',
+            language: repository.language || 'Unknown',
+            stars: String(repository.stargazers_count || 0),
+            forks: String(repository.forks_count || 0),
+            topics: (repository.topics || []).join(', '),
+            category: categoryPath.length > 0 ? categoryPath.join(' / ') : 'Uncategorized',
+            tags: tags.length > 0 ? tags.join(', ') : 'No tags',
+            status: enhancements?.status || 'inbox',
+            rating: String(enhancements?.rating || 0),
+            personal_summary: enhancements?.personalSummary?.trim() || '',
+            personal_review: enhancements?.personalReview?.trim() || '',
+            notes: enhancements?.notes?.trim() || 'Write long-form usage notes, source reading records, experiments, and caveats here.',
+            project_links: projectLinks.length > 0
+                ? projectLinks.map((link) => `- [${link.label}](${link.url})`).join('\n')
+                : '- ',
+            obsidian_links: [
+                categoryPath.length > 0 ? `- Category: ${categoryPath.map((segment, index) => `[[${categoryPath.slice(0, index + 1).join('/')}|${segment}]]`).join(' / ')}` : '',
+                tags.length > 0 ? `- Tags: ${tags.map((tag) => `[[${tag}]]`).join(', ')}` : ''
+            ].filter(Boolean).join('\n') || '- ',
+            created_at: repository.created_at ? this.formatDate(repository.created_at) : '',
+            updated_at: repository.updated_at ? this.formatDate(repository.updated_at) : '',
+            starred_at: repository.starred_at ? this.formatDate(repository.starred_at) : '',
+            note_created_at: this.formatDate(new Date().toISOString()),
+            note_updated_at: this.formatDate(new Date().toISOString())
+        };
+        return template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_, key: string) => replacements[key] ?? '');
+    }
+
+    private formatYamlPropertyValue(value: string, type: string): string {
+        const trimmed = value.trim();
+        if (type === 'number') {
+            return /^-?\d+(\.\d+)?$/.test(trimmed) ? trimmed : '0';
+        }
+        if (type === 'checkbox') {
+            return trimmed === 'true' ? 'true' : 'false';
+        }
+        if (type === 'tags') {
+            if (!trimmed) return '[]';
+            if (trimmed.startsWith('[') && trimmed.endsWith(']')) return trimmed;
+            return `[${trimmed.split(',').map((item) => JSON.stringify(item.trim())).filter((item) => item !== '""').join(', ')}]`;
+        }
+        return JSON.stringify(trimmed);
     }
 
     /**
@@ -291,7 +656,12 @@ export class ExportService {
             'is_fork': () => repository.fork ? 'true' : 'false',
             'topics': () => (repository.topics && repository.topics.length > 0) ? `[${repository.topics.map(t => `"${t}"`).join(', ')}]` : '[]',
             'notes': () => enhancements?.notes || '',
-            'user_tags': () => (enhancements?.tags && enhancements.tags.length > 0) ? `\n${enhancements.tags.map(tag => `  - ${tag}`).join('\n')}` : '[]',
+            'user_tags': () => (enhancements?.tags && enhancements.tags.length > 0) ? enhancements.tags.join(', ') : '[]',
+            'category': () => (enhancements?.categoryPath && enhancements.categoryPath.length > 0) ? enhancements.categoryPath.join(' / ') : '',
+            'status': () => enhancements?.status || ((enhancements?.categoryPath && enhancements.categoryPath.length > 0) ? 'active' : 'inbox'),
+            'rating': () => String(enhancements?.rating || 0),
+            'personal_summary': () => enhancements?.personalSummary || '',
+            'personal_review': () => enhancements?.personalReview || '',
             'linked_note': () => enhancements?.linked_note || ''
         };
 
@@ -330,9 +700,15 @@ export class ExportService {
      */
     private async ensureFolderExists(folderPath: string): Promise<void> {
         const normalizedPath = normalizePath(folderPath);
-        
-        if (!this.vault.getAbstractFileByPath(normalizedPath)) {
-            await this.vault.createFolder(normalizedPath);
+        if (!normalizedPath) return;
+
+        const segments = normalizedPath.split('/').filter((segment) => segment.length > 0);
+        let currentPath = '';
+        for (const segment of segments) {
+            currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+            if (!this.vault.getAbstractFileByPath(currentPath)) {
+                await this.vault.createFolder(currentPath);
+            }
         }
     }
 }

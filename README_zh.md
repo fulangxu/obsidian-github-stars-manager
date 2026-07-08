@@ -1,261 +1,122 @@
 # GitHub Stars Manager
 
-[![GitHub release](https://img.shields.io/github/release/EmberSparks/obsidian-github-stars-manager.svg)](https://github.com/EmberSparks/obsidian-github-stars-manager/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=%23483699&label=downloads&query=%24%5B%22github-stars-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json)](https://obsidian.md/plugins?id=github-stars-manager)
-
 [English README](README.md) | [使用指南](USAGE_GUIDE.md) | [English Guide](USAGE_GUIDE_EN.md)
 
-<p align="center">
-  <img src="assets/github-stars-manager-preview.png" alt="GitHub Stars Manager 在 Obsidian 中的仓库看板界面" width="100%">
-</p>
+GitHub Stars Manager 是一个面向 Obsidian 的 GitHub Star 知识管理插件。它不是简单的收藏同步工具，而是帮助你把 GitHub Stars 中零散的开源项目，整理成可分类、可检索、可评价、可沉淀笔记的长期知识库。
 
-一个功能强大的 Obsidian 插件，让您可以直接在 Obsidian 中管理和查看 GitHub 星标仓库，支持多账号管理、自定义标签、智能搜索和精致的 Obsidian 原生界面。
+## 核心能力
 
-## ✨ 核心功能
+- **Dashboard 仪表盘**：查看收藏总数、Inbox、已分类、已关联 Note、归档、最近新增、语言分布、整理状态、标签和 Note 覆盖率。
+- **Inbox 工作流**：同步后未分类项目默认进入 Inbox，适合集中整理。
+- **多级分类目录**：支持一级、二级、三级及更深层级分类，左侧目录树直接展示。
+- **标签系统**：标签用于横向筛选，不再和分类混在一起。支持搜索、添加、选择、删除。
+- **项目详情面板**：点击项目后在右侧编辑分类、标签、状态、评分、个人说明、个人评价、Notes、Links 和 Linked Note。
+- **自动保存**：项目详情中的修改会自动保存，不需要手动点 Save。
+- **Note 生成**：按分类路径生成 Obsidian Markdown 笔记，支持默认模板、研究模板、实现模板和自定义模板。
+- **Obsidian 原生风格**：界面使用 Obsidian 主题变量，不强行覆盖你的主题颜色。
+- **本地优先**：Token、仓库缓存、分类、标签、评价和笔记链接都保存在本地插件数据中。
 
-### 📊 仓库管理
-- 📋 在 Obsidian 中查看所有已加星标的 GitHub 仓库
-- 👥 **多账号支持**：同时管理多个 GitHub 账号的星标
-- ⭐ **星标统计**：实时显示仓库总数和星标数量
-- 🔄 智能同步：自动或手动同步星标仓库
-- 🔄 **账号管理**：可单独启用/禁用特定账号的同步
+## 推荐工作流
 
-### 🏷️ 个性化标注
-- 🏷️ **Tag Chips 组件**：直观的标签芯片输入，支持快速选择已有标签
-- 📝 为仓库添加自定义标签和笔记
-- 🔗 关联仓库到 Obsidian 笔记文件
-- 💾 所有标注数据本地存储，保护隐私
+1. 同步 GitHub Stars。
+2. 新增或未分类项目进入 Inbox。
+3. 从 Inbox 中筛选待整理项目。
+4. 为项目选择多级分类和标签。
+5. 填写个人说明、个人评价、使用记录、链接和评分。
+6. 生成或关联 Obsidian Note。
+7. 通过分类、标签、搜索、双链和 Note 复盘项目。
 
-### 🔍 智能搜索与筛选
-- 🔎 通过名称、描述、语言、标签进行实时搜索
-- 🎯 支持正则表达式和模糊匹配
-- 📊 按星标时间、名称、语言、星标数等多维度排序
-- 🏷️ 基于标签的高级筛选
+## 界面结构
 
-### 🎨 精致界面
-- 🎨 简洁的 Obsidian 原生卡片布局，跟随当前保险库的浅色/深色外观
-- 📱 响应式瀑布流布局：类似 Pinterest 的卡片展示方式
-- 🧩 紧凑工具栏和标签芯片，便于快速浏览与筛选
-- ✨ 平滑的悬停反馈和清晰易读的卡片样式
+- **Home**：知识库仪表盘，不再平铺所有仓库。
+- **Inbox**：待整理项目队列。
+- **All**：全部项目列表。
+- **Recently added**：最近新增项目。
+- **Archived**：归档项目。
+- **Categories**：多级分类树。空白处右键创建一级分类；分类上右键创建子分类或删除分类。
+- **Filter**：右上角筛选抽屉，按状态、分类、标签、语言、活跃度和 Note 状态筛选。
+- **Settings**：设置语言、账号、标签管理器、Note 根目录、模板和同步策略。
 
-### 🔒 安全与隐私
-- 🔐 使用 GitHub Personal Access Token 进行安全认证
-- 💾 GitHub 令牌、仓库缓存、标签和笔记均保存在本地插件数据中
-- 🌐 仅在同步或校验令牌时访问 GitHub 官方服务
-- ✅ 通过 eslint-plugin-obsidianmd 全部规则验证
+## Note 与模板
+
+可以在设置中配置 Note 根目录、文件命名规则、模板类型和自定义模板。默认路径会跟随分类：
+
+```text
+GitHub Stars/Robotics/PX4/Flight Control/PX4-PX4-Autopilot.md
+```
+
+默认模板包含项目属性、GitHub 信息、分类、标签、状态、评分、个人说明、个人评价、链接和笔记内容。支持变量：
+
+```text
+{{repo_name}}, {{full_name}}, {{owner}}, {{description}}, {{github_url}},
+{{language}}, {{stars}}, {{forks}}, {{topics}}, {{category}}, {{tags}},
+{{status}}, {{rating}}, {{personal_summary}}, {{personal_review}},
+{{project_links}}, {{notes}}, {{created_at}}, {{updated_at}},
+{{note_created_at}}, {{note_updated_at}}
+```
+
+插件会检查 Linked Note 文件是否真实存在。Note 被删除后，插件不会继续把它当作已存在，也不会在打开时创建空白 Note。
 
 ## 安全与隐私
 
-GitHub Stars Manager 是本地优先的 GitHub 集成插件。插件只会在用户配置账号、校验令牌、手动同步或触发相关操作时访问 GitHub 服务。
+插件只会在配置账号、校验 Token、同步仓库或打开 GitHub 链接时访问 GitHub。
 
-运行时可能访问的外部服务：
+可能访问的外部服务：
 
-- `api.github.com`：校验 GitHub 令牌、读取当前用户信息、获取已加星标仓库和仓库详情
-- `github.com`：用户点击仓库链接时在浏览器中打开 GitHub 页面
-- `avatars.githubusercontent.com` 或其他 GitHub 头像域名：显示 GitHub 用户和仓库所有者头像
+- `api.github.com`：校验 Token、读取用户信息和同步 Star 仓库。
+- `github.com`：打开仓库页面。
+- GitHub 头像域名：显示仓库 owner 头像。
 
-运行时使用的 Obsidian 能力：
+使用的 Obsidian 能力：
 
-- 枚举保险库文件：仅用于在关联仓库到笔记时，让用户选择现有 Markdown 笔记
-- 写入保险库文件：仅用于将用户选中的星标仓库导出为 Markdown 文件，保存到用户配置的导出目录
-- 写入剪贴板：仅用于用户点击复制仓库链接操作
+- 读取 Vault 文件：检查 Linked Note 是否存在、打开已有笔记。
+- 写入 Vault 文件：创建项目 Note 或导出文件。
+- 写入剪贴板：仅在用户复制链接时使用。
 
-插件不会：
+插件不会上传你的 Vault 内容，不收集分析数据，不执行远程代码，也不会把 GitHub Token 发给 GitHub 之外的服务。
 
-- 上传保险库内容或笔记正文
-- 收集分析数据或遥测数据
-- 跟踪用户行为
-- 下载或执行远程代码
-- 读取剪贴板内容
-- 将 GitHub 令牌发送到 GitHub 以外的服务
+## GitHub Token
 
-GitHub 个人访问令牌会保存在 Obsidian 插件设置数据中。该数据位于本地保险库配置内，不会由插件主动上传；但它不是加密密码库。建议为令牌设置过期时间，并尽量使用满足需求的最小权限。
+在 <https://github.com/settings/tokens> 创建 GitHub Personal Access Token。公开 Star 仓库通常只需要：
 
-## 配置
+- `read:user`
+- `public_repo`
 
-要使用此插件，您需要提供一个具有必要权限的 GitHub 个人访问令牌 (PAT)，以便读取您已加星标的仓库。
-
-**如何获取 GitHub 个人访问令牌 (PAT):**
-
-1.  **登录 GitHub:** 访问 [github.com](https://github.com) 并登录您的账户。
-2.  **访问设置:** 点击页面右上角的个人头像，然后选择 "Settings"。
-3.  **开发者设置:** 在左侧菜单栏中，滚动到底部，点击 "Developer settings"。
-4.  **个人访问令牌:** 在左侧菜单中，选择 "Personal access tokens"，然后选择 "Tokens (classic)"。 *(注意：请选择 Classic Token，Fine-grained tokens 可能需要更复杂的权限设置)*
-5.  **生成新令牌:** 点击 "Generate new token" 按钮，然后选择 "Generate new token (classic)"。
-6.  **令牌描述:** 在 "Note" 字段中，为您的令牌添加一个描述性的名称，例如 "Obsidian Stars Manager"。
-7.  **设置过期时间:** 选择一个合适的过期时间 (Expiration)。为了安全起见，建议不要选择 "No expiration"。
-8.  **选择范围 (Scopes):** 建议优先使用最小权限。读取公开星标仓库通常使用 `read:user` 和 `public_repo` 即可；只有在确实需要访问私有仓库相关数据时，才考虑使用更宽泛的 `repo` 权限。
-9.  **生成令牌:** 点击页面底部的 "Generate token" 按钮。
-10. **复制令牌:** **重要！** GitHub 只会显示一次完整的令牌。请立即点击复制按钮将其复制下来，并妥善保管。**离开此页面后将无法再次看到完整的令牌。**
-11. **在插件中使用:** 将复制的令牌粘贴到 Obsidian 中 "GitHub Stars Manager" 插件设置选项卡里的 "GitHub 个人访问令牌 (PAT)" 字段中。
-
-## 使用说明
-
-1. 安装并启用插件后，在左侧面板会出现一个 GitHub 星标图标
-2. 点击图标打开星标仓库视图
-3. 首次使用需要在设置中配置您的 GitHub PAT
-4. 点击"同步"按钮获取您的星标仓库
-5. 您可以为每个仓库添加个人笔记、标签，或关联到现有的 Obsidian 笔记
-
-📖 **[查看详细使用指南](USAGE_GUIDE.md)** | [English Guide](USAGE_GUIDE_EN.md)
-
-### 界面布局
-
-插件使用一套稳定一致的界面样式，并跟随 Obsidian 当前外观；插件内不再提供独立的主题切换按钮。
-
-- 响应式瀑布流布局，类似 Pinterest 的卡片展示方式
-- 仓库卡片包含所有者头像、标签、笔记、链接、星标数、分叉数和更新时间等信息
-- 工具栏集中放置同步、搜索、账号筛选、统计和标签筛选能力
+只有确实需要访问私有仓库相关数据时，才考虑使用 `repo` 权限。建议设置过期时间，并使用最小权限。
 
 ## 安装
 
-### 从 Obsidian 社区插件安装（推荐）
+### Obsidian 社区插件
 
-1. 打开 Obsidian 设置
-2. 转到"社区插件"选项卡
-3. 搜索 "GitHub Stars Manager"
-4. 点击安装并启用插件
+1. 打开 Obsidian 设置。
+2. 进入社区插件。
+3. 搜索 `GitHub Stars Manager`。
+4. 安装并启用。
 
 ### 手动安装
 
-1. 下载最新版本的 `main.js`、`manifest.json` 和 `styles.css`
-2. 将这些文件复制到您的保险库文件夹：`VaultFolder/.obsidian/plugins/github-stars-manager/`
-3. 重启 Obsidian
-4. 在设置中启用插件
+1. 下载发布包中的 `main.js`、`manifest.json`、`styles.css`。
+2. 复制到：
 
-## 开发
-
-### 环境要求
-
-- Node.js 16+
-- npm 或 yarn
-
-### 开发命令
-
-```bash
-# 安装依赖
-npm install
-
-# 开发模式（监听文件变化）
-npm run dev
-
-# 生产构建
-npm run build
-
-# 版本升级
-npm run version
+```text
+VaultFolder/.obsidian/plugins/github-stars-manager/
 ```
 
-### 技术栈
-
-- **TypeScript**: 类型安全的 JavaScript 超集
-- **Obsidian API**: 插件开发框架
-- **GitHub REST API**: 通过 @octokit/rest 访问 GitHub 数据
-- **CSS3**: 现代样式和动画效果
-- **esbuild**: 快速的 JavaScript 打包工具
-
-### 本地开发环境配置
-
-为了在本地开发和调试插件，您需要配置一个环境变量，指向您的 Obsidian 插件目录。这样，当您运行 `npm run dev` 或 `npm run build` 时，插件文件会自动部署到您的 Obsidian Vault 中。
-
-1.  **创建 `.env` 文件**: 复制项目根目录下的 `.env.example` 文件，并将其重命名为 `.env`。
-2.  **配置插件目录**: 打开 `.env` 文件，将 `OBSIDIAN_PLUGIN_DIR` 的值修改为您本地的 Obsidian 插件目录的绝对路径。例如：
-    ```
-    OBSIDIAN_PLUGIN_DIR="D:/MyObsidianVault/.obsidian/plugins"
-    ```
-3.  **重启开发服务器**: 如果您正在运行 `npm run dev`，请重新启动它以加载新的环境变量。
-
-### 项目结构
-
-```
-├── src/
-│   ├── main.ts          # 主插件类
-│   ├── view.ts          # 星标仓库视图
-│   ├── settings.ts      # 插件设置
-│   ├── modal.ts         # 编辑对话框
-│   ├── githubService.ts # GitHub API 服务
-│   └── types.ts         # TypeScript 类型定义
-├── main.ts              # 插件入口点
-├── manifest.json        # 插件清单
-├── styles.css          # 样式文件
-└── README.md           # 说明文档
-```
+3. 重启 Obsidian。
+4. 在社区插件中启用。
 
 ## 更新日志
 
-### v0.1.3 (当前版本)
-- 📝 将根目录 README 调整为英文优先，便于 Obsidian Community 审核识别，同时保留中文 README 到 `README_zh.md`
-- 🔒 补充保险库文件枚举、保险库写入、剪贴板写入的运行时能力说明
-- 🎨 移除插件内主题切换，统一跟随 Obsidian 当前外观
-- 🔧 移除直接触发源码审核警告的 `eslint-plugin-import` 和 `lint-staged` 开发依赖
+### v0.2.0
 
-### v0.1.2
-- 🛡️ 将最低 Obsidian 版本声明更新为 1.7.2，匹配当前使用的官方 API 要求
-- 🔒 补充安全与隐私说明，明确运行时访问的 GitHub 服务和本地数据存储方式
-- 🔑 将 GitHub 令牌说明调整为最小权限优先，推荐 `read:user` 和 `public_repo`
-- 📦 优化 Release 工作流，仅发布 Obsidian 支持的插件文件并生成构建来源证明
-- 🔧 移除构建脚本中的 `builtin-modules` 和 `dotenv` 依赖，降低审核警告
-
-### v0.1.1
-- 🏷️ 新增 Tag Chips 输入组件，支持快速选择标签
-- ⭐ 添加星标总数显示功能
-- 🎨 增强笔记卡片可见性和 UI 样式
-- 🔧 启用全部 25 个 eslint-plugin-obsidianmd 规则
-- 🐛 修复 token 错误处理和提示信息
-- 🛡️ 补充安全与隐私说明，便于 Obsidian Community 审核识别网络与数据行为
-- 🤖 配置 pre-commit hook 和 GitHub Actions CI/CD
-
-### v0.1.0
-- ✨ 初始版本发布
-- 🎯 多账号 GitHub Stars 管理
-- 🎨 初始版本支持液态玻璃主题；插件内主题切换已在 v0.1.3 移除
-- 📱 响应式瀑布流布局
-- 🔍 高级搜索和筛选功能
-- 🏷️ 自定义标签和笔记功能
+- 将插件定位升级为 GitHub Star 知识管理系统。
+- 新增 Dashboard、Inbox 工作流、智能视图和多级分类。
+- 新增可编辑的项目详情面板，支持自动保存和拖拽调整宽度。
+- 新增标签管理器，支持添加、检索、选择和删除。
+- 新增 Note 设置、内置模板、自定义模板和分类路径生成 Note。
+- 修复 Linked Note 文件删除后仍显示存在的问题。
+- 更新 README 和使用说明。
 
 ## 许可证
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
-
-## 贡献
-
-欢迎贡献代码！请遵循以下步骤：
-
-1. Fork 本仓库
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 支持
-
-如果您觉得这个插件对您有帮助，可以考虑：
-
-- ⭐ 给项目点个星标
-- 🐛 报告 Bug 或提出改进建议
-- 💡 分享给其他 Obsidian 用户
-- 💖 [赞助开发者](https://github.com/sponsors/EmberSparks)
-
-## Star History
-
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date&theme=dark"
-  />
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
-  />
-  <img
-    alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=EmberSparks/obsidian-github-stars-manager&type=Date"
-  />
-</picture>
-
-## 相关链接
-
-- [Obsidian 官网](https://obsidian.md)
-- [GitHub API 文档](https://docs.github.com/en/rest)
-- [插件开发文档](https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin)
+MIT License。详见 [LICENSE](LICENSE)。

@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, Notice, Modal, Menu, TFile } from 'obsidian';
 import GithubStarsPlugin from './main';
 import { GithubRepository, UserRepoEnhancements, GithubAccount, RepoRenderPerformanceMode, RepoProjectLink } from './types';
 import { EditRepoModal, InvalidEnhancementRecordsModal } from './modal';
@@ -7,6 +7,7 @@ import { t } from './i18n';
 import { RepoQueryEngine, RepoQueryDataItem, RepoQueryDataPatch, RepoQueryInput } from './repoQueryEngine';
 import { getTagDisplayCount } from './tagAssociation';
 import { normalizeProjectLinks } from './projectLinks';
+import { buildEnhancementRepoSnapshot } from './userEnhancementCleanup';
 import {
     buildRepoRenderQueryKey as buildRepoRenderWindowKey,
     getNextRepoVisibleLimit,
@@ -29,6 +30,7 @@ import {
 
 export const VIEW_TYPE_STARS = 'github-stars-view';
 const GITHUB_STARS_EXTERNAL_LINK_ICON_ID = 'github-stars-external-link';
+type SmartRepositoryFilter = 'all' | 'needs_review' | 'unclassified' | 'no_notes' | 'no_links' | 'low_rating';
 
 const TAG_COLOR_PALETTE = [
     '#b7dbff', '#c3e4ff', '#c8f0ff', '#c6f4f0', '#c9f7e6', '#d8f7cf',
@@ -74,6 +76,12 @@ interface RepoMasonryBaseState {
 type RenderRepository = GithubRepository & {
     notes?: string;
     tags?: string[];
+    categoryPath?: string[];
+    status?: 'inbox' | 'active' | 'reviewed' | 'archived';
+    rating?: number;
+    personalSummary?: string;
+    personalReview?: string;
+    archivedAt?: string;
     linked_note?: string;
     project_links?: RepoProjectLink[];
 };
@@ -118,12 +126,24 @@ export class GithubStarsView extends ItemView {
     searchInput: HTMLInputElement;
     repoContainer: HTMLElement;
     repoListEl: HTMLElement | null = null;
+    categoryPanelEl: HTMLElement | null = null;
+    detailPanelEl: HTMLElement | null = null;
+    detailResizeHandleEl: HTMLElement | null = null;
+    workspaceEl: HTMLElement | null = null;
+    selectedDetailRepoId: number | null = null;
+    detailPanelWidth: number = 360;
+    detailAutosaveTimer: number | null = null;
     isReopeningView: boolean = false;
     lastStableRepoContainerClientWidth: number = 0;
     lastStableRepoContainerClientHeight: number = 0;
     filterByTags: Map<string, boolean> = new Map();
     tagsContainer: HTMLElement;
     currentFilter: string = '';
+    currentLayoutMode: 'home' | 'inbox' | 'all' | 'recent' | 'archived' | 'category' | 'settings' = 'home';
+    currentSmartFilter: SmartRepositoryFilter = 'all';
+    selectedCategoryPath: string[] = [];
+    isCategoryDirectoryOpen: boolean = false;
+    categoryDirectoryHideTimer: number | null = null;
     sortBy: 'starred_at' | 'stars' | 'forks' | 'updated' = 'starred_at';
     sortOrder: 'asc' | 'desc' = 'desc'; // 新增排序方向状态
     showAllTags: boolean = false; // Add state for showing all tags
@@ -225,14 +245,24 @@ export class GithubStarsView extends ItemView {
         this.ensurePerformancePanelMount(container);
         this.updatePerformanceToggleButtonState();
 
+        const workspaceEl = container.createDiv('github-stars-workspace');
+        this.workspaceEl = workspaceEl;
+        workspaceEl.setCssProps({ '--github-stars-detail-width': `${this.detailPanelWidth}px` });
+        this.categoryPanelEl = workspaceEl.createDiv('github-stars-category-panel');
+        this.renderCategoryPanel();
+
         // Repositories Container
-        this.repoContainer = container.createDiv('github-stars-repos');
+        this.repoContainer = workspaceEl.createDiv('github-stars-repos');
         this.repoContainer.removeEventListener('click', this.handleRepoContainerClick);
         this.repoContainer.addEventListener('click', this.handleRepoContainerClick);
         this.repoContainer.removeEventListener('change', this.handleRepoContainerChange);
         this.repoContainer.addEventListener('change', this.handleRepoContainerChange);
         this.repoContainer.removeEventListener('scroll', this.handleRepoContainerScroll);
         this.repoContainer.addEventListener('scroll', this.handleRepoContainerScroll, { passive: true });
+
+        this.detailResizeHandleEl = workspaceEl.createDiv('github-stars-detail-resizer');
+        this.detailResizeHandleEl.addEventListener('mousedown', this.handleDetailResizeStart);
+        this.detailPanelEl = workspaceEl.createDiv('github-stars-detail-panel');
         this.repoContainer.empty();
         this.repoListEl = this.repoContainer.createDiv('github-stars-repo-list');
         this.isReopeningView = true;
@@ -763,6 +793,7 @@ export class GithubStarsView extends ItemView {
      */
     private buildRepoCardSignature(repo: RenderRepository): string {
         const tags = Array.isArray(repo.tags) ? repo.tags : [];
+        const categoryPath = this.getRepoCategoryPath(repo);
         const projectLinks = normalizeProjectLinks(repo.project_links);
         const tagColorSignature = tags
             .map((tag) => `${tag}:${this.getTagColor(tag)}`)
@@ -783,6 +814,7 @@ export class GithubStarsView extends ItemView {
             repo.updated_at || '',
             repo.notes || '',
             repo.linked_note || '',
+            categoryPath.join('\u0001'),
             tags.join('\u0001'),
             projectLinkSignature,
             tagColorSignature,
@@ -1221,6 +1253,1498 @@ export class GithubStarsView extends ItemView {
         this.repoListEl?.createEl('div', { cls: 'github-stars-empty', text: message });
     }
 
+    private renderDashboard(): void {
+        this.resetRepoAvatarObserver();
+        this.clearRepoListContent();
+        this.repoContainer.scrollTop = 0;
+        this.repoListEl?.removeClass('is-restoring-layout');
+        this.isReopeningView = false;
+        if (!this.repoListEl) return;
+
+        const repos = this.combinedRepositoriesCache;
+        this.selectedDetailRepoId = null;
+        this.renderDetailPanel(null);
+        const inboxCount = this.getRepositoriesByKnowledgeStatus('inbox').length;
+        const archivedCount = this.getRepositoriesByKnowledgeStatus('archived').length;
+        const classifiedCount = repos.filter((repo) => this.getRepoCategoryPath(repo).length > 0).length;
+        const linkedCount = repos.filter((repo) => this.isRepoLinkedToNote(repo)).length;
+        const recentlyAddedCount = this.getRecentlyAddedRepositories(14).length;
+
+        const dashboardEl = this.repoListEl.createDiv('github-stars-dashboard');
+        const headerEl = dashboardEl.createDiv('github-stars-dashboard-header');
+        headerEl.createEl('h2', { text: t('view.dashboardTitle') });
+        headerEl.createEl('p', { text: t('view.dashboardSubtitle') });
+
+        const metricsEl = dashboardEl.createDiv('github-stars-dashboard-metrics');
+        [
+            [t('view.metricTotal'), repos.length],
+            [t('view.metricInbox'), inboxCount],
+            [t('view.metricClassified'), classifiedCount],
+            [t('view.metricLinkedNotes'), linkedCount],
+            [t('view.metricArchived'), archivedCount],
+            [t('view.metricRecentlyAdded'), recentlyAddedCount]
+        ].forEach(([label, value]) => {
+            const metricEl = metricsEl.createDiv('github-stars-dashboard-metric');
+            metricEl.createEl('div', { cls: 'github-stars-dashboard-metric-value', text: String(value) });
+            metricEl.createEl('div', { cls: 'github-stars-dashboard-metric-label', text: String(label) });
+        });
+
+        const chartsEl = dashboardEl.createDiv('github-stars-dashboard-charts');
+        this.renderDashboardDistribution(chartsEl, t('view.categoryDistribution'), this.getTopCategoryDistribution());
+        this.renderDashboardDistribution(chartsEl, t('view.languageDistribution'), this.getTopLanguageDistribution());
+        this.renderDashboardDistribution(chartsEl, t('view.statusDistribution'), this.getStatusDistribution());
+        this.renderDashboardDistribution(chartsEl, t('view.topTags'), this.getTopTagDistribution());
+
+        const previewEl = dashboardEl.createDiv('github-stars-dashboard-preview');
+        const inboxPreviewEl = previewEl.createDiv('github-stars-dashboard-preview-section');
+        inboxPreviewEl.createEl('h3', { text: t('view.inboxPreview') });
+        const inboxTable = inboxPreviewEl.createDiv('github-stars-dashboard-table');
+        const inboxHead = inboxTable.createDiv('github-stars-dashboard-table-row github-stars-dashboard-table-head');
+        ['Repository', 'Added', 'Category', 'Review', 'Stars'].forEach((label) => inboxHead.createSpan({ text: label }));
+        this.getRepositoriesByKnowledgeStatus('inbox').slice(0, 12).forEach((repo) => {
+            const rowEl = inboxTable.createDiv('github-stars-dashboard-table-row');
+            rowEl.createEl('span', { text: repo.full_name || repo.name });
+            rowEl.createEl('span', { text: this.formatDateCompact(repo.starred_at) });
+            rowEl.createEl('span', { text: this.formatCategoryPath(this.getRepoCategoryPath(repo)) });
+            rowEl.createEl('span', { text: t(`view.status.${this.getRepoKnowledgeStatus(repo)}`) });
+            rowEl.createEl('span', { text: this.formatNumber(repo.stargazers_count ?? 0) });
+        });
+
+        const recentPreviewEl = previewEl.createDiv('github-stars-dashboard-preview-section');
+        recentPreviewEl.createEl('h3', { text: t('view.recentlyOrganizedPreview') });
+        const recentTable = recentPreviewEl.createDiv('github-stars-dashboard-table');
+        const recentHead = recentTable.createDiv('github-stars-dashboard-table-row github-stars-dashboard-table-head');
+        ['Repository', 'Category', 'Linked Note', 'Date'].forEach((label) => recentHead.createSpan({ text: label }));
+        repos
+            .filter((repo) => this.getRepoCategoryPath(repo).length > 0)
+            .slice(0, 12)
+            .forEach((repo) => {
+                const rowEl = recentTable.createDiv('github-stars-dashboard-table-row github-stars-dashboard-table-row-recent');
+                rowEl.createEl('span', { text: repo.full_name || repo.name });
+                rowEl.createEl('span', { text: this.formatCategoryPath(this.getRepoCategoryPath(repo)) });
+                rowEl.createEl('span', { text: repo.linked_note || '-' });
+                rowEl.createEl('span', { text: this.formatDateCompact(repo.updated_at) });
+            });
+    }
+
+    private renderSettingsView(): void {
+        this.resetRepoAvatarObserver();
+        this.clearRepoListContent();
+        this.repoContainer.scrollTop = 0;
+        this.renderDetailPanel(null);
+        if (!this.repoListEl) return;
+
+        const settingsEl = this.repoListEl.createDiv('github-stars-inline-settings');
+        settingsEl.createEl('h2', { text: 'Settings' });
+        settingsEl.createEl('p', {
+            cls: 'github-stars-inline-settings-desc',
+            text: 'Configure accounts, language, note generation, and templates.'
+        });
+
+        const languageSection = this.renderInlineSettingsSection(settingsEl, 'Language');
+        const languageSelect = languageSection.createEl('select', { cls: 'github-stars-detail-input' });
+        languageSelect.createEl('option', { value: 'en', text: 'English' });
+        languageSelect.createEl('option', { value: 'zh', text: '中文' });
+        languageSelect.value = this.plugin.settings.language;
+        languageSelect.addEventListener('change', async () => {
+            this.plugin.settings.language = languageSelect.value as 'en' | 'zh';
+            await this.plugin.saveSettings();
+            this.renderSettingsView();
+            this.renderCategoryPanel();
+            this.requestTagsFilterUpdate();
+        });
+
+        const accountsSection = this.renderInlineSettingsSection(settingsEl, 'Accounts');
+        const accounts = this.plugin.settings.accounts || [];
+        if (accounts.length === 0) {
+            accountsSection.createEl('div', { cls: 'github-stars-dashboard-empty', text: 'No accounts configured.' });
+        } else {
+            accounts.forEach((account) => {
+                const row = accountsSection.createDiv('github-stars-inline-account-row');
+                row.createSpan({ text: account.name || account.username || 'GitHub account' });
+                row.createSpan({ text: account.enabled ? 'Enabled' : 'Disabled' });
+            });
+        }
+
+        this.renderSettingsTagManager(settingsEl);
+
+        const noteSettings = this.plugin.settings.noteSettings;
+        const noteSection = this.renderInlineSettingsSection(settingsEl, 'Note settings');
+        this.renderInlineTextSetting(noteSection, 'Root folder', noteSettings.rootFolder, async (value) => {
+            noteSettings.rootFolder = value.trim() || 'GitHub Stars';
+            await this.plugin.saveSettings();
+        });
+        this.renderInlineTextSetting(noteSection, 'Filename template', noteSettings.filenameTemplate, async (value) => {
+            noteSettings.filenameTemplate = value.trim() || '{{owner}}-{{name}}';
+            await this.plugin.saveSettings();
+        });
+
+        const templateRow = noteSection.createDiv('github-stars-inline-setting-row');
+        templateRow.createSpan({ text: 'Template' });
+        const templateSelect = templateRow.createEl('select', { cls: 'github-stars-detail-input' });
+        templateSelect.createEl('option', { value: 'default', text: 'Default project properties' });
+        templateSelect.createEl('option', { value: 'research', text: 'Research review' });
+        templateSelect.createEl('option', { value: 'implementation', text: 'Implementation notes' });
+        templateSelect.createEl('option', { value: 'custom', text: 'Custom template' });
+        templateSelect.value = noteSettings.templateId || 'default';
+        templateSelect.addEventListener('change', async () => {
+            noteSettings.templateId = templateSelect.value as 'default' | 'research' | 'implementation' | 'custom';
+            await this.plugin.saveSettings();
+            this.renderSettingsView();
+        });
+
+        const templatePreviewRow = noteSection.createDiv('github-stars-inline-setting-stack');
+        templatePreviewRow.createSpan({
+            text: (noteSettings.templateId || 'default') === 'custom'
+                ? 'Custom note template'
+                : 'Selected template preview'
+        });
+        templatePreviewRow.createEl('div', {
+            cls: 'github-stars-inline-settings-desc',
+            text: 'Available variables include {{full_name}}, {{description}}, {{github_url}}, {{language}}, {{stars}}, {{forks}}, {{category}}, {{tags}}, {{status}}, {{rating}}, {{personal_summary}}, {{personal_review}}, {{project_links}}, and {{notes}}.'
+        });
+        const templateTextarea = templatePreviewRow.createEl('textarea', { cls: 'github-stars-detail-textarea github-stars-note-template-textarea' });
+        templateTextarea.rows = 14;
+        templateTextarea.value = this.getNoteTemplatePreview(noteSettings.templateId || 'default', noteSettings.customTemplate || '');
+        if ((noteSettings.templateId || 'default') === 'custom') {
+            templateTextarea.addEventListener('change', async () => {
+                noteSettings.customTemplate = templateTextarea.value;
+                await this.plugin.saveSettings();
+            });
+        } else {
+            templateTextarea.readOnly = true;
+            templateTextarea.addClass('is-readonly');
+        }
+
+        const togglesSection = this.renderInlineSettingsSection(settingsEl, 'Note behavior');
+        this.renderInlineToggleSetting(togglesSection, 'Open after create', noteSettings.openAfterCreate, async (value) => {
+            noteSettings.openAfterCreate = value;
+            await this.plugin.saveSettings();
+        });
+        this.renderInlineToggleSetting(togglesSection, 'Write category links', noteSettings.autoWriteCategoryLinks, async (value) => {
+            noteSettings.autoWriteCategoryLinks = value;
+            await this.plugin.saveSettings();
+        });
+        this.renderInlineToggleSetting(togglesSection, 'Write tag links', noteSettings.autoWriteTagLinks, async (value) => {
+            noteSettings.autoWriteTagLinks = value;
+            await this.plugin.saveSettings();
+        });
+    }
+
+    private renderInlineSettingsSection(parent: HTMLElement, title: string): HTMLElement {
+        const section = parent.createDiv('github-stars-inline-settings-section');
+        section.createEl('h3', { text: title });
+        return section;
+    }
+
+    private renderSettingsTagManager(parent: HTMLElement): void {
+        const tagSection = this.renderInlineSettingsSection(parent, 'Tag manager');
+        const manager = tagSection.createDiv('github-stars-settings-tag-manager');
+        const toolbar = manager.createDiv('github-stars-settings-tag-toolbar');
+        const input = toolbar.createEl('input', {
+            cls: 'github-stars-detail-input',
+            type: 'text',
+            placeholder: 'Search or add tag'
+        });
+        const addButton = toolbar.createEl('button', { text: 'Add' });
+        addButton.type = 'button';
+        const deleteButton = toolbar.createEl('button', { text: 'Delete selected' });
+        deleteButton.type = 'button';
+        deleteButton.disabled = true;
+
+        const selectedTags = new Set<string>();
+        const resultsEl = manager.createDiv('github-stars-settings-tag-results');
+
+        const addTag = async () => {
+            const tag = input.value.trim();
+            if (!tag) return;
+            const added = this.plugin.addTag(tag);
+            if (!added) {
+                new Notice(t('view.tagCreateExists', { tag }));
+                return;
+            }
+            await this.plugin.savePluginData();
+            this.allTags = this.plugin.data.allTags || [];
+            input.value = '';
+            selectedTags.clear();
+            renderResults();
+            this.requestTagsFilterUpdate();
+        };
+
+        const deleteSelectedTags = async () => {
+            if (selectedTags.size === 0) return;
+
+            let removedCount = 0;
+            for (const tag of Array.from(selectedTags)) {
+                const result = this.plugin.removeTagIfUnused(tag);
+                if (!result.removed) {
+                    new Notice(t('view.tagDeleteBlocked', {
+                        tag,
+                        count: String(result.associatedRepositoryCount)
+                    }));
+                    continue;
+                }
+                removedCount += 1;
+            }
+
+            if (removedCount > 0) {
+                await this.plugin.savePluginData();
+                this.allTags = this.plugin.data.allTags || [];
+                this.requestTagsFilterUpdate();
+            }
+
+            selectedTags.clear();
+            renderResults();
+        };
+
+        const showDeleteMenu = (event: MouseEvent, tag?: string) => {
+            event.preventDefault();
+            if (tag && !selectedTags.has(tag)) {
+                selectedTags.clear();
+                selectedTags.add(tag);
+                renderResults();
+            }
+            if (selectedTags.size === 0) return;
+            const menu = new Menu();
+            menu.addItem((item) => {
+                item
+                    .setTitle('Delete selected')
+                    .setIcon('trash')
+                    .onClick(() => {
+                        void deleteSelectedTags();
+                    });
+            });
+            menu.showAtMouseEvent(event);
+        };
+
+        const updateDeleteButton = () => {
+            deleteButton.disabled = selectedTags.size === 0;
+        };
+
+        const toggleSelection = (event: MouseEvent, tag: string) => {
+            if (event.ctrlKey || event.metaKey) {
+                if (selectedTags.has(tag)) {
+                    selectedTags.delete(tag);
+                } else {
+                    selectedTags.add(tag);
+                }
+            } else {
+                selectedTags.clear();
+                selectedTags.add(tag);
+            }
+            renderResults();
+        };
+
+        function normalize(value: string): string {
+            return value.trim().toLowerCase();
+        }
+
+        const renderResults = () => {
+            resultsEl.empty();
+            const query = normalize(input.value);
+            const matchedTags = this.allTags
+                .filter((tag) => normalize(tag).includes(query))
+                .slice(0, query ? 50 : 20);
+
+            selectedTags.forEach((tag) => {
+                if (!this.allTags.some((existingTag) => existingTag.toLowerCase() === tag.toLowerCase())) {
+                    selectedTags.delete(tag);
+                }
+            });
+            updateDeleteButton();
+
+            if (this.allTags.length === 0) {
+                resultsEl.createEl('div', { cls: 'github-stars-dashboard-empty', text: t('view.noTags') });
+                return;
+            }
+
+            if (matchedTags.length === 0) {
+                resultsEl.createEl('div', { cls: 'github-stars-dashboard-empty', text: 'No matching tags' });
+                return;
+            }
+
+            matchedTags.forEach((tag) => {
+                const row = resultsEl.createEl('button', {
+                    cls: 'github-stars-settings-tag-result',
+                    type: 'button'
+                });
+                row.toggleClass('is-selected', selectedTags.has(tag));
+                row.createSpan({ text: tag });
+                row.createSpan({
+                    cls: 'github-stars-settings-tag-result-count',
+                    text: String(this.plugin.getTagAssociationCount(tag))
+                });
+                row.addEventListener('click', (event) => {
+                    toggleSelection(event, tag);
+                });
+                row.addEventListener('contextmenu', (event) => {
+                    showDeleteMenu(event, tag);
+                });
+            });
+        };
+
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                void addTag();
+            }
+        });
+        input.addEventListener('input', () => {
+            renderResults();
+        });
+        addButton.addEventListener('click', () => {
+            void addTag();
+        });
+        deleteButton.addEventListener('click', () => {
+            void deleteSelectedTags();
+        });
+        resultsEl.addEventListener('contextmenu', (event) => {
+            showDeleteMenu(event);
+        });
+
+        renderResults();
+    }
+
+    private getNoteTemplatePreview(templateId: string, customTemplate: string): string {
+        if (templateId === 'research') {
+            return `# {{full_name}} research review
+
+## Why it matters
+
+{{personal_summary}}
+
+## Technical reading
+
+- Core idea:
+- Architecture:
+- Important modules:
+- Related papers:
+
+## Evaluation
+
+{{personal_review}}
+
+## Reproduction notes
+
+- Environment:
+- Install:
+- Test command:
+- Known issues:
+
+## Project properties
+
+- URL: {{github_url}}
+- Language: {{language}}
+- Stars: {{stars}}
+- Category: {{category}}
+- Tags: {{tags}}
+
+## My notes
+
+{{notes}}`;
+        }
+        if (templateId === 'implementation') {
+            return `# {{full_name}} implementation notes
+
+## Use case
+
+{{personal_summary}}
+
+## Quick facts
+
+- GitHub: {{github_url}}
+- Language: {{language}}
+- Stars: {{stars}}
+- Forks: {{forks}}
+- Category: {{category}}
+- Status: {{status}}
+- Rating: {{rating}}
+
+## How to use
+
+- Install:
+- Minimal example:
+- Integration points:
+- Version constraints:
+
+## Links
+
+{{project_links}}
+
+## Review
+
+{{personal_review}}
+
+## My notes
+
+{{notes}}`;
+        }
+        if (templateId === 'custom') {
+            return customTemplate;
+        }
+        return `# {{full_name}}
+
+> {{description}}
+
+## Project properties
+
+- GitHub: {{github_url}}
+- Owner: {{owner}}
+- Language: {{language}}
+- Stars: {{stars}}
+- Forks: {{forks}}
+- Category: {{category}}
+- Tags: {{tags}}
+- Status: {{status}}
+- Rating: {{rating}}
+- Starred at: {{starred_at}}
+
+## Personal interpretation
+
+**Summary:** {{personal_summary}}
+
+{{personal_review}}
+
+## Related links
+
+{{project_links}}
+
+## Obsidian links
+
+{{obsidian_links}}
+
+## My notes
+
+{{notes}}`;
+    }
+
+    private renderInlineTextSetting(parent: HTMLElement, label: string, value: string, onChange: (value: string) => Promise<void>): void {
+        const row = parent.createDiv('github-stars-inline-setting-row');
+        row.createSpan({ text: label });
+        const input = row.createEl('input', { cls: 'github-stars-detail-input', type: 'text', value });
+        input.addEventListener('change', () => {
+            void onChange(input.value);
+        });
+    }
+
+    private renderInlineToggleSetting(parent: HTMLElement, label: string, value: boolean, onChange: (value: boolean) => Promise<void>): void {
+        const row = parent.createDiv('github-stars-inline-setting-row');
+        row.createSpan({ text: label });
+        const input = row.createEl('input', { type: 'checkbox' });
+        input.checked = value;
+        input.addEventListener('change', () => {
+            void onChange(input.checked);
+        });
+    }
+
+    private renderDashboardDistribution(
+        parent: HTMLElement,
+        title: string,
+        items: Array<{ label: string; count: number }>
+    ): void {
+        const panelEl = parent.createDiv('github-stars-dashboard-chart');
+        panelEl.createEl('h3', { text: title });
+        const visibleItems = items.slice(0, 8);
+        const totalCount = visibleItems.reduce((sum, item) => sum + item.count, 0);
+        if (items.length === 0) {
+            panelEl.createEl('div', { cls: 'github-stars-dashboard-empty', text: t('view.noDashboardData') });
+            return;
+        }
+
+        const chartBodyEl = panelEl.createDiv('github-stars-dashboard-donut-body');
+        const donutEl = chartBodyEl.createDiv('github-stars-dashboard-donut');
+        let cursor = 0;
+        const segments = visibleItems.map((item, index) => {
+            const start = cursor;
+            const end = cursor + (item.count / Math.max(1, totalCount)) * 100;
+            cursor = end;
+            return `${this.getDashboardChartColor(index)} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+        });
+        donutEl.setCssProps({
+            '--dashboard-donut': `conic-gradient(${segments.join(', ')})`
+        });
+        const centerEl = donutEl.createDiv('github-stars-dashboard-donut-center');
+        centerEl.createSpan({ text: String(totalCount) });
+
+        const legendEl = chartBodyEl.createDiv('github-stars-dashboard-donut-legend');
+        visibleItems.forEach((item, index) => {
+            const rowEl = legendEl.createDiv('github-stars-dashboard-legend-row');
+            rowEl.createSpan({
+                cls: 'github-stars-dashboard-legend-dot',
+                attr: { style: `background:${this.getDashboardChartColor(index)}` }
+            });
+            rowEl.createEl('span', { cls: 'github-stars-dashboard-bar-label', text: item.label });
+            rowEl.createEl('span', {
+                cls: 'github-stars-dashboard-bar-count',
+                text: `${item.count} (${Math.round((item.count / Math.max(1, totalCount)) * 100)}%)`
+            });
+        });
+    }
+
+    private getDashboardChartColor(index: number): string {
+        const colors = ['#7c5cff', '#4f8cff', '#55b37a', '#f2bd42', '#eb7b42', '#c75bd6', '#8f9aa8', '#59c4c8'];
+        return colors[index % colors.length];
+    }
+
+    private formatDateCompact(dateString: string | undefined | null): string {
+        if (!dateString) return '-';
+        const parsed = new Date(dateString);
+        if (Number.isNaN(parsed.getTime())) return '-';
+        return parsed.toISOString().slice(0, 10);
+    }
+
+    private getDetailPanelRepository(repositories: RenderRepository[]): RenderRepository | null {
+        if (this.selectedDetailRepoId !== null) {
+            const selected = this.combinedRepositoriesById.get(this.selectedDetailRepoId);
+            if (selected) return selected;
+        }
+        return repositories.find((repo) => this.isRepoVisibleByAccount(repo)) || null;
+    }
+
+    private renderDetailPanel(repo: RenderRepository | null): void {
+        if (!this.detailPanelEl) return;
+        if (this.detailAutosaveTimer !== null) {
+            window.clearTimeout(this.detailAutosaveTimer);
+            this.detailAutosaveTimer = null;
+        }
+        this.detailPanelEl.empty();
+
+        if (!repo) {
+            this.workspaceEl?.removeClass('has-detail');
+            return;
+        }
+
+        this.workspaceEl?.addClass('has-detail');
+        this.selectedDetailRepoId = repo.id;
+        const categoryPath = this.getRepoCategoryPath(repo);
+        const tags = Array.isArray(repo.tags) ? repo.tags : [];
+        const projectLinks = normalizeProjectLinks(repo.project_links);
+
+        const headerEl = this.detailPanelEl.createDiv('github-stars-detail-header');
+        const titleEl = headerEl.createDiv('github-stars-detail-title-row');
+        const githubIcon = titleEl.createSpan('github-stars-detail-github-icon');
+        setIcon(githubIcon, 'github');
+        titleEl.createEl('h3', { text: repo.full_name || repo.name || 'Unnamed repo' });
+
+        const actionsEl = titleEl.createDiv('github-stars-detail-actions');
+        const pinButton = actionsEl.createEl('button', { cls: 'github-stars-detail-icon-button' });
+        pinButton.type = 'button';
+        setIcon(pinButton, 'pin');
+        const editButton = actionsEl.createEl('button', { cls: 'github-stars-detail-icon-button' });
+        editButton.type = 'button';
+        editButton.setAttribute('data-repo-action', 'edit-repo');
+        editButton.setAttribute('data-repo-id', String(repo.id));
+        setIcon(editButton, 'more-horizontal');
+        editButton.addEventListener('click', () => {
+            const originalGithubRepo = this.githubRepositories.find((item) => item.id === repo.id);
+            if (originalGithubRepo) {
+                this.openEditModal(originalGithubRepo);
+            }
+        });
+
+        if (repo.description) {
+            headerEl.createEl('p', { cls: 'github-stars-detail-description', text: repo.description });
+        }
+        if (repo.html_url) {
+            const linkEl = headerEl.createEl('a', {
+                cls: 'github-stars-detail-link',
+                href: repo.html_url,
+                text: repo.html_url
+            });
+            linkEl.setAttribute('target', '_blank');
+            linkEl.setAttribute('rel', 'noopener');
+        }
+
+        this.renderDetailSection('Organization', (sectionEl) => {
+            this.renderDetailCategoryPicker(sectionEl, 'Category', categoryPath);
+            this.renderDetailTagPicker(sectionEl, tags);
+            const statusField = sectionEl.createDiv('github-stars-detail-edit-field');
+            statusField.createSpan({ cls: 'github-stars-detail-field-label', text: 'Status' });
+            const statusSelect = statusField.createEl('select', { cls: 'github-stars-detail-input' });
+            (['inbox', 'active', 'reviewed', 'archived'] as const).forEach((status) => {
+                statusSelect.createEl('option', {
+                    value: status,
+                    text: t(`view.status.${status}`)
+                });
+            });
+            statusSelect.value = this.getRepoKnowledgeStatus(repo);
+            statusSelect.dataset.detailField = 'status';
+            const ratingField = sectionEl.createDiv('github-stars-detail-edit-field');
+            ratingField.createSpan({ cls: 'github-stars-detail-field-label', text: 'Rating' });
+            const ratingWrap = ratingField.createDiv('github-stars-detail-rating-picker');
+            const hiddenRating = ratingWrap.createEl('input', { type: 'hidden' });
+            hiddenRating.value = String(repo.rating || 0);
+            hiddenRating.dataset.detailField = 'rating';
+            for (let rating = 1; rating <= 5; rating += 1) {
+                const starButton = ratingWrap.createEl('button', {
+                    cls: `github-stars-detail-star${(repo.rating || 0) >= rating ? ' active' : ''}`,
+                    text: '★'
+                });
+                starButton.type = 'button';
+                starButton.addEventListener('click', () => {
+                    const currentRating = Number(hiddenRating.value || '0');
+                    const nextRating = currentRating === rating ? 0 : rating;
+                    hiddenRating.value = String(nextRating);
+                    ratingWrap.querySelectorAll('.github-stars-detail-star').forEach((buttonEl, index) => {
+                        buttonEl.toggleClass('active', index < nextRating);
+                    });
+                    this.scheduleDetailAutosave(repo.id, 0);
+                });
+            }
+        });
+
+        this.renderDetailSection('Personal Review', (sectionEl) => {
+            this.renderDetailTextarea(sectionEl, 'Summary', 'personalSummary', repo.personalSummary || '', t('view.noDashboardData'));
+            this.renderDetailTextarea(sectionEl, 'Evaluation', 'personalReview', repo.personalReview || '', t('view.noDashboardData'));
+        });
+
+        this.renderDetailSection('Notes', (sectionEl) => {
+            this.renderDetailTextarea(sectionEl, '', 'notes', repo.notes || '', t('view.noDashboardData'));
+        });
+
+        this.renderDetailSection('Links', (sectionEl) => {
+            this.renderDetailTextarea(
+                sectionEl,
+                'Project links',
+                'projectLinks',
+                projectLinks.map((link) => `${link.label} | ${link.url}`).join('\n'),
+                'Website | https://example.com'
+            );
+        });
+
+        this.renderDetailSection('Linked Note', (sectionEl) => {
+            const linkedNoteFile = this.getLinkedNoteFile(repo.linked_note);
+            this.renderDetailInput(sectionEl, t('view.detailDoc'), 'linkedNote', repo.linked_note || '', 'GitHub Stars/owner-repo.md');
+            const noteActions = sectionEl.createDiv('github-stars-detail-inline-actions');
+            const openButton = noteActions.createEl('button', { text: t('view.openDetailDoc') });
+            openButton.type = 'button';
+            openButton.disabled = !linkedNoteFile;
+            openButton.addEventListener('click', () => {
+                const file = this.getLinkedNoteFile(repo.linked_note);
+                if (!file) return;
+                this.app.workspace.getLeaf(false).openFile(file).catch((err) =>
+                    console.error('Failed to open linked note:', err)
+                );
+            });
+            const createButton = noteActions.createEl('button', { text: t('view.createDetailDoc') });
+            createButton.type = 'button';
+            createButton.addEventListener('click', async () => {
+                await this.saveDetailPanelChanges(repo.id, false, false);
+                const originalGithubRepo = this.githubRepositories.find((item) => item.id === repo.id);
+                if (!originalGithubRepo) return;
+                const path = await this.plugin.createRepositoryDetailNote(originalGithubRepo);
+                if (path) {
+                    const input = this.detailPanelEl?.querySelector<HTMLInputElement>('[data-detail-field="linkedNote"]');
+                    if (input) input.value = path;
+                    await this.saveDetailPanelChanges(repo.id, false, false);
+                    new Notice(t('view.detailDocCreated', { path }));
+                }
+            });
+        });
+
+        this.attachDetailAutosave(repo.id);
+    }
+
+    private renderDetailSection(title: string, renderContent: (sectionEl: HTMLElement) => void): void {
+        if (!this.detailPanelEl) return;
+        const sectionEl = this.detailPanelEl.createDiv('github-stars-detail-section');
+        sectionEl.createEl('h4', { text: title });
+        renderContent(sectionEl);
+    }
+
+    private renderDetailField(parent: HTMLElement, label: string, value: string): void {
+        const fieldEl = parent.createDiv('github-stars-detail-field');
+        fieldEl.createSpan({ cls: 'github-stars-detail-field-label', text: label });
+        fieldEl.createSpan({ cls: 'github-stars-detail-field-value', text: value });
+    }
+
+    private renderDetailInput(parent: HTMLElement, label: string, field: string, value: string, placeholder = ''): void {
+        const fieldEl = parent.createDiv('github-stars-detail-edit-field');
+        fieldEl.createSpan({ cls: 'github-stars-detail-field-label', text: label });
+        const inputEl = fieldEl.createEl('input', {
+            cls: 'github-stars-detail-input',
+            type: 'text',
+            value
+        });
+        inputEl.dataset.detailField = field;
+        if (placeholder) {
+            inputEl.setAttribute('placeholder', placeholder);
+        }
+        if (field === 'categoryPath') {
+            const listId = `github-stars-category-options-${Date.now()}`;
+            inputEl.setAttribute('list', listId);
+            const listEl = fieldEl.createEl('datalist', { attr: { id: listId } });
+            this.getKnownCategoryPaths().forEach((path) => {
+                listEl.createEl('option', { value: this.formatCategoryPath(path) });
+            });
+        }
+        if (field === 'tags') {
+            const listId = `github-stars-tag-options-${Date.now()}`;
+            inputEl.setAttribute('list', listId);
+            const listEl = fieldEl.createEl('datalist', { attr: { id: listId } });
+            this.allTags.forEach((tag) => listEl.createEl('option', { value: tag }));
+        }
+    }
+
+    private renderDetailCategoryPicker(parent: HTMLElement, label: string, value: string[]): void {
+        const fieldEl = parent.createDiv('github-stars-detail-edit-field github-stars-detail-category-picker-field');
+        fieldEl.createSpan({ cls: 'github-stars-detail-field-label', text: label });
+        const pickerEl = fieldEl.createDiv('github-stars-detail-category-picker');
+        const inputEl = pickerEl.createEl('input', {
+            cls: 'github-stars-detail-input github-stars-detail-category-search',
+            type: 'text',
+            value: value.length > 0 ? this.formatCategoryPath(value) : ''
+        });
+        inputEl.dataset.detailField = 'categoryPath';
+        inputEl.dataset.detailAutosave = 'manual';
+        inputEl.setAttribute('placeholder', 'Search category');
+        const suggestionsEl = pickerEl.createDiv('github-stars-detail-category-suggestions');
+
+        const getMatches = (query: string) => {
+            const normalizedQuery = query.trim().toLowerCase();
+            return this.getKnownCategoryPaths()
+                .filter((path) => {
+                    if (!normalizedQuery) return true;
+                    return this.formatCategoryPath(path).toLowerCase().includes(normalizedQuery);
+                })
+                .slice(0, 12);
+        };
+
+        const renderSuggestions = () => {
+            suggestionsEl.empty();
+            const matches = getMatches(inputEl.value);
+            if (matches.length === 0) {
+                suggestionsEl.createEl('div', { cls: 'github-stars-detail-category-empty', text: 'No categories' });
+                return;
+            }
+            matches.forEach((path) => {
+                const item = suggestionsEl.createEl('button', {
+                    cls: 'github-stars-detail-category-suggestion',
+                    text: this.formatCategoryPath(path)
+                });
+                item.type = 'button';
+                item.addEventListener('click', () => {
+                    inputEl.value = this.formatCategoryPath(path);
+                    suggestionsEl.empty();
+                    this.scheduleDetailAutosave(this.selectedDetailRepoId, 0);
+                    inputEl.blur();
+                });
+            });
+        };
+
+        inputEl.addEventListener('focus', renderSuggestions);
+        inputEl.addEventListener('input', renderSuggestions);
+        inputEl.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const firstMatch = getMatches(inputEl.value)[0];
+                if (firstMatch) {
+                    inputEl.value = this.formatCategoryPath(firstMatch);
+                    suggestionsEl.empty();
+                    this.scheduleDetailAutosave(this.selectedDetailRepoId, 0);
+                    inputEl.blur();
+                }
+            }
+            if (event.key === 'Escape') {
+                suggestionsEl.empty();
+                inputEl.blur();
+            }
+        });
+        inputEl.addEventListener('blur', () => {
+            window.setTimeout(() => {
+                suggestionsEl.empty();
+                const exactPath = this.findKnownCategoryPathByValue(inputEl.value);
+                if (inputEl.value.trim() === '' || exactPath) {
+                    if (exactPath) {
+                        inputEl.value = this.formatCategoryPath(exactPath);
+                    }
+                    this.scheduleDetailAutosave(this.selectedDetailRepoId, 0);
+                }
+            }, 120);
+        });
+    }
+
+    private renderDetailTagPicker(parent: HTMLElement, initialTags: string[]): void {
+        const fieldEl = parent.createDiv('github-stars-detail-edit-field github-stars-detail-tag-picker-field');
+        fieldEl.createSpan({ cls: 'github-stars-detail-field-label', text: t('view.tagsLabel') });
+        const pickerEl = fieldEl.createDiv('github-stars-detail-tag-picker');
+        const hiddenInput = pickerEl.createEl('input', { type: 'hidden' });
+        hiddenInput.dataset.detailField = 'tags';
+        let selectedTags = this.uniqueTags(initialTags);
+
+        const syncHiddenInput = () => {
+            hiddenInput.value = JSON.stringify(selectedTags);
+        };
+
+        const renderChips = () => {
+            chipsEl.empty();
+            selectedTags.forEach((tag) => {
+                const chip = chipsEl.createEl('button', {
+                    cls: 'github-stars-detail-tag-chip',
+                    text: `${tag} x`
+                });
+                chip.type = 'button';
+                this.applyTagColorStyle(chip, tag);
+                chip.addEventListener('click', () => {
+                    selectedTags = selectedTags.filter((item) => item.toLowerCase() !== tag.toLowerCase());
+                    syncHiddenInput();
+                    renderChips();
+                    renderSuggestions(searchInput.value);
+                    this.scheduleDetailAutosave(this.selectedDetailRepoId, 0);
+                });
+            });
+        };
+
+        const renderSuggestions = (query: string) => {
+            suggestionsEl.empty();
+            const normalizedQuery = query.trim().toLowerCase();
+            if (!normalizedQuery) return;
+            const suggestions = this.allTags
+                .filter((tag) => tag.toLowerCase().includes(normalizedQuery))
+                .filter((tag) => !selectedTags.some((selected) => selected.toLowerCase() === tag.toLowerCase()))
+                .slice(0, 8);
+            suggestions.forEach((tag) => {
+                const item = suggestionsEl.createEl('button', {
+                    cls: 'github-stars-detail-tag-suggestion',
+                    text: tag
+                });
+                item.type = 'button';
+                item.addEventListener('click', () => {
+                    selectedTags = this.uniqueTags([...selectedTags, tag]);
+                    searchInput.value = '';
+                    syncHiddenInput();
+                    renderChips();
+                    renderSuggestions('');
+                    searchInput.focus();
+                    this.scheduleDetailAutosave(this.selectedDetailRepoId, 0);
+                });
+            });
+        };
+
+        const chipsEl = pickerEl.createDiv('github-stars-detail-tag-chips');
+        const searchRow = pickerEl.createDiv('github-stars-detail-tag-search-row');
+        const searchInput = searchRow.createEl('input', {
+            cls: 'github-stars-detail-input github-stars-detail-tag-search',
+            type: 'text'
+        });
+        searchInput.setAttribute('placeholder', 'Search or add tag');
+        const suggestionsEl = pickerEl.createDiv('github-stars-detail-tag-suggestions');
+
+        const addCurrentTag = async () => {
+            const tag = searchInput.value.trim();
+            if (!tag) return;
+            if (!selectedTags.some((selected) => selected.toLowerCase() === tag.toLowerCase())) {
+                selectedTags = this.uniqueTags([...selectedTags, tag]);
+            }
+            if (!this.allTags.some((existing) => existing.toLowerCase() === tag.toLowerCase())) {
+                this.plugin.addTag(tag);
+                this.allTags = this.plugin.data.allTags || [];
+            }
+            searchInput.value = '';
+            syncHiddenInput();
+            renderChips();
+            renderSuggestions('');
+            this.scheduleDetailAutosave(this.selectedDetailRepoId, 0);
+        };
+
+        searchInput.addEventListener('input', () => renderSuggestions(searchInput.value));
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                void addCurrentTag();
+            }
+        });
+        syncHiddenInput();
+        renderChips();
+    }
+
+    private attachDetailAutosave(repoId: number): void {
+        if (!this.detailPanelEl) return;
+        const fields = Array.from(
+            this.detailPanelEl.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('[data-detail-field]')
+        );
+        fields.forEach((fieldEl) => {
+            if (fieldEl instanceof HTMLInputElement && fieldEl.type === 'hidden') return;
+            if (fieldEl.dataset.detailAutosave === 'manual') return;
+            const delay = fieldEl instanceof HTMLTextAreaElement || fieldEl instanceof HTMLInputElement ? 650 : 0;
+            fieldEl.addEventListener('input', () => {
+                this.scheduleDetailAutosave(repoId, delay);
+            });
+            fieldEl.addEventListener('change', () => {
+                this.scheduleDetailAutosave(repoId, 0);
+            });
+        });
+    }
+
+    private scheduleDetailAutosave(repoId: number | null, delayMs = 650): void {
+        if (repoId === null) return;
+        if (this.detailAutosaveTimer !== null) {
+            window.clearTimeout(this.detailAutosaveTimer);
+        }
+        this.detailAutosaveTimer = window.setTimeout(() => {
+            this.detailAutosaveTimer = null;
+            void this.saveDetailPanelChanges(repoId, false, false);
+        }, delayMs);
+    }
+
+    private renderDetailTextarea(parent: HTMLElement, label: string, field: string, value: string, placeholder = ''): void {
+        if (label) {
+            parent.createEl('div', { cls: 'github-stars-detail-block-label', text: label });
+        }
+        const textareaEl = parent.createEl('textarea', {
+            cls: 'github-stars-detail-textarea'
+        });
+        textareaEl.dataset.detailField = field;
+        textareaEl.value = value;
+        textareaEl.rows = field === 'projectLinks' ? 3 : 4;
+        if (placeholder) {
+            textareaEl.setAttribute('placeholder', placeholder);
+        }
+    }
+
+    private renderDetailBlock(parent: HTMLElement, label: string, value: string): void {
+        if (label) {
+            parent.createEl('div', { cls: 'github-stars-detail-block-label', text: label });
+        }
+        parent.createEl('div', { cls: 'github-stars-detail-block', text: value });
+    }
+
+    private renderRatingText(rating: number | undefined): string {
+        const normalizedRating = typeof rating === 'number' ? Math.max(0, Math.min(5, Math.round(rating))) : 0;
+        if (normalizedRating === 0) return 'Not rated';
+        return `${'★'.repeat(normalizedRating)}${'☆'.repeat(5 - normalizedRating)}`;
+    }
+
+    private async saveDetailPanelChanges(repoId: number, showNotice: boolean, renderAfterSave = true): Promise<void> {
+        if (!this.detailPanelEl) return;
+        const originalGithubRepo = this.githubRepositories.find((item) => item.id === repoId);
+        if (!originalGithubRepo) {
+            new Notice(t('view.cannotEditRepo'));
+            return;
+        }
+
+        const valueOf = (field: string): string => {
+            const input = this.detailPanelEl?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-detail-field="${field}"]`);
+            return input?.value || '';
+        };
+        const existingEnhancement = this.plugin.data.userEnhancements[repoId];
+        const statusValue = valueOf('status') as 'inbox' | 'active' | 'reviewed' | 'archived';
+        const ratingValue = Number(valueOf('rating'));
+        const updatedTags = this.parseDetailTagsValue(valueOf('tags'));
+        const resolvedCategoryPath = this.resolveDetailCategoryPathValue(valueOf('categoryPath'), existingEnhancement);
+        updatedTags.forEach((tag) => {
+            this.plugin.addTag(tag);
+        });
+        const updatedEnhancement: UserRepoEnhancements = {
+            ...existingEnhancement,
+            notes: valueOf('notes').trim(),
+            tags: updatedTags,
+            categoryPath: resolvedCategoryPath,
+            status: ['inbox', 'active', 'reviewed', 'archived'].includes(statusValue) ? statusValue : 'inbox',
+            rating: Number.isFinite(ratingValue) ? Math.max(0, Math.min(5, Math.round(ratingValue))) : 0,
+            personalSummary: valueOf('personalSummary').trim(),
+            personalReview: valueOf('personalReview').trim(),
+            archivedAt: statusValue === 'archived'
+                ? existingEnhancement?.archivedAt || new Date().toISOString()
+                : undefined,
+            linked_note: valueOf('linkedNote').trim() || undefined,
+            project_links: this.parseProjectLinksValue(valueOf('projectLinks')),
+            repoSnapshot: buildEnhancementRepoSnapshot(originalGithubRepo, new Date().toISOString())
+        };
+
+        this.plugin.data.userEnhancements[repoId] = updatedEnhancement;
+        await this.plugin.savePluginData();
+        this.userEnhancements = this.plugin.data.userEnhancements || {};
+        this.allTags = this.plugin.data.allTags || [];
+        this.rebuildCombinedRepositoriesCache();
+        const updatedRepo = this.combinedRepositoriesById.get(repoId) || null;
+        if (renderAfterSave) {
+            this.renderDetailPanel(updatedRepo);
+        }
+        this.renderCategoryPanel();
+        this.requestTagsFilterUpdate();
+        this.requestRepositoriesRender();
+        if (showNotice) {
+            new Notice(t('notices.repoUpdated'));
+        }
+    }
+
+    private parseCommaList(value: string): string[] {
+        return this.uniqueTags(value
+            .split(',')
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0));
+    }
+
+    private parseDetailTagsValue(value: string): string[] {
+        const trimmedValue = value.trim();
+        if (!trimmedValue) return [];
+        try {
+            const parsed = JSON.parse(trimmedValue);
+            if (Array.isArray(parsed)) {
+                return this.uniqueTags(
+                    parsed
+                        .map((item) => String(item).trim())
+                        .filter((item) => item.length > 0)
+                );
+            }
+        } catch {
+            // Older detail forms stored tags as a comma-separated string.
+        }
+        return this.parseCommaList(trimmedValue);
+    }
+
+    private uniqueTags(tags: string[]): string[] {
+        const seenTags = new Set<string>();
+        const result: string[] = [];
+        tags.forEach((tag) => {
+            const trimmedTag = tag.trim();
+            if (!trimmedTag) return;
+            const normalizedTag = trimmedTag.toLowerCase();
+            if (seenTags.has(normalizedTag)) return;
+            seenTags.add(normalizedTag);
+            result.push(trimmedTag);
+        });
+        return result;
+    }
+
+    private parseCategoryPathValue(value: string): string[] {
+        return value
+            .split(/[\/>\\|]+/g)
+            .map((segment) => segment.trim())
+            .filter((segment) => segment.length > 0);
+    }
+
+    private resolveDetailCategoryPathValue(value: string, existingEnhancement?: UserRepoEnhancements): string[] {
+        const trimmedValue = value.trim();
+        if (!trimmedValue) return [];
+        const matchedPath = this.findKnownCategoryPathByValue(trimmedValue);
+        if (matchedPath) return matchedPath;
+        return this.normalizeCategoryPath(existingEnhancement?.categoryPath);
+    }
+
+    private parseProjectLinksValue(value: string): RepoProjectLink[] {
+        return value
+            .split(/\r?\n/g)
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+            .map((line) => {
+                const [labelPart, ...urlParts] = line.split('|');
+                const label = labelPart.trim();
+                const url = urlParts.join('|').trim();
+                if (!url) {
+                    return { label: label || 'Link', url: label };
+                }
+                return { label: label || url, url };
+            })
+            .filter((link) => link.url.length > 0);
+    }
+
+    private handleDetailResizeStart = (event: MouseEvent): void => {
+        if (!this.workspaceEl) return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = this.detailPanelWidth;
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const nextWidth = Math.max(280, Math.min(560, startWidth - (moveEvent.clientX - startX)));
+            this.detailPanelWidth = nextWidth;
+            this.workspaceEl?.setCssProps({ '--github-stars-detail-width': `${nextWidth}px` });
+        };
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.removeClass('github-stars-resizing-detail');
+        };
+        document.body.addClass('github-stars-resizing-detail');
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    };
+
+    private normalizeCategoryPath(path: unknown): string[] {
+        if (!Array.isArray(path)) {
+            return [];
+        }
+        const normalized: string[] = [];
+        path.forEach((segment) => {
+            const trimmed = String(segment).trim();
+            if (trimmed) {
+                normalized.push(trimmed);
+            }
+        });
+        return normalized;
+    }
+
+    private getRepoCategoryPath(repo: RenderRepository): string[] {
+        return this.normalizeCategoryPath(repo.categoryPath);
+    }
+
+    private getRepoKnowledgeStatus(repo: RenderRepository): 'inbox' | 'active' | 'reviewed' | 'archived' {
+        if (repo.status === 'archived' || repo.status === 'reviewed' || repo.status === 'active') {
+            return repo.status;
+        }
+        return this.getRepoCategoryPath(repo).length === 0 ? 'inbox' : 'active';
+    }
+
+    private isRepoLinkedToNote(repo: RenderRepository): boolean {
+        return Boolean(this.getLinkedNoteFile(repo.linked_note));
+    }
+
+    private getLinkedNoteFile(linkedNotePath?: string): TFile | null {
+        const trimmedPath = (linkedNotePath || '').trim();
+        if (!trimmedPath) return null;
+
+        const directFile = this.app.vault.getAbstractFileByPath(trimmedPath);
+        if (directFile instanceof TFile) return directFile;
+
+        if (!trimmedPath.toLowerCase().endsWith('.md')) {
+            const markdownFile = this.app.vault.getAbstractFileByPath(`${trimmedPath}.md`);
+            if (markdownFile instanceof TFile) return markdownFile;
+        }
+
+        const linkPath = trimmedPath.replace(/\.md$/i, '');
+        const linkedFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, '');
+        return linkedFile instanceof TFile ? linkedFile : null;
+    }
+
+    private getCategoryKey(path: string[]): string {
+        return path.map((segment) => segment.trim().toLowerCase()).join('/');
+    }
+
+    private formatCategoryPath(path: string[]): string {
+        return path.length > 0 ? path.join(' / ') : t('view.uncategorized');
+    }
+
+    private getAllCategorySummaries(): Array<{ path: string[]; count: number }> {
+        const categoryCounts = new Map<string, { path: string[]; count: number }>();
+        this.getKnownCategoryPaths().forEach((path) => {
+            const key = this.getCategoryKey(path);
+            if (key && !categoryCounts.has(key)) {
+                categoryCounts.set(key, { path, count: 0 });
+            }
+        });
+        this.combinedRepositoriesCache.forEach((repo) => {
+            const path = this.getRepoCategoryPath(repo);
+            if (path.length === 0) {
+                const key = '';
+                const existing = categoryCounts.get(key);
+                if (existing) {
+                    existing.count += 1;
+                } else {
+                    categoryCounts.set(key, { path: [], count: 1 });
+                }
+                return;
+            }
+
+            path.forEach((_, index) => {
+                const partialPath = path.slice(0, index + 1);
+                const key = this.getCategoryKey(partialPath);
+                const existing = categoryCounts.get(key);
+                if (existing) {
+                    existing.count += 1;
+                } else {
+                    categoryCounts.set(key, { path: partialPath, count: 1 });
+                }
+            });
+        });
+
+        return Array.from(categoryCounts.values()).sort((left, right) => {
+            if (left.path.length !== right.path.length) {
+                return left.path.length - right.path.length;
+            }
+            return this.formatCategoryPath(left.path).localeCompare(
+                this.formatCategoryPath(right.path),
+                undefined,
+                { sensitivity: 'base' }
+            );
+        });
+    }
+
+    private getKnownCategoryPaths(): string[][] {
+        const known = Array.isArray(this.plugin.data.knownCategories) ? this.plugin.data.knownCategories : [];
+        const paths = new Map<string, string[]>();
+        known.forEach((path) => {
+            const normalized = this.normalizeCategoryPath(path);
+            if (normalized.length > 0) {
+                paths.set(this.getCategoryKey(normalized), normalized);
+            }
+        });
+        this.combinedRepositoriesCache.forEach((repo) => {
+            const path = this.getRepoCategoryPath(repo);
+            if (path.length > 0) {
+                paths.set(this.getCategoryKey(path), path);
+            }
+        });
+        return Array.from(paths.values()).sort((a, b) => this.formatCategoryPath(a).localeCompare(this.formatCategoryPath(b)));
+    }
+
+    private findKnownCategoryPathByValue(value: string): string[] | null {
+        const normalizedValue = value.trim();
+        if (!normalizedValue) return [];
+        const parsedPath = this.normalizeCategoryPath(this.parseCategoryPathValue(normalizedValue));
+        const parsedKey = this.getCategoryKey(parsedPath);
+        const formattedValue = normalizedValue.toLowerCase();
+        return this.getKnownCategoryPaths().find((path) =>
+            this.getCategoryKey(path) === parsedKey ||
+            this.formatCategoryPath(path).toLowerCase() === formattedValue
+        ) || null;
+    }
+
+    private openCreateCategoryModal(parentPath: string[] = []): void {
+        const view = this;
+        const normalizedParentPath = this.normalizeCategoryPath(parentPath);
+        class CreateCategoryModal extends Modal {
+            private value = '';
+            onOpen() {
+                const { contentEl } = this;
+                contentEl.empty();
+                this.modalEl.addClass('github-stars-category-modal');
+                contentEl.createEl('h2', { text: normalizedParentPath.length > 0 ? 'Create subcategory' : 'Create category' });
+                contentEl.createEl('p', {
+                    cls: 'github-stars-category-modal-desc',
+                    text: normalizedParentPath.length > 0
+                        ? `Parent: ${view.formatCategoryPath(normalizedParentPath)}`
+                        : 'Create a top-level category.'
+                });
+                const input = contentEl.createEl('input', {
+                    type: 'text',
+                    cls: 'github-stars-create-category-input'
+                });
+                input.addEventListener('input', () => {
+                    this.value = input.value;
+                });
+                const actions = contentEl.createDiv('github-stars-category-modal-actions');
+                const cancel = actions.createEl('button', { text: t('common.cancel') });
+                cancel.addEventListener('click', () => this.close());
+                const create = actions.createEl('button', { cls: 'mod-cta', text: 'Create' });
+                create.addEventListener('click', async () => {
+                    const childPath = view.parseCategoryPathValue(this.value);
+                    const path = [...normalizedParentPath, ...childPath];
+                    if (path.length === 0) return;
+                    const categories = Array.isArray(view.plugin.data.knownCategories) ? view.plugin.data.knownCategories : [];
+                    const key = view.getCategoryKey(path);
+                    if (!categories.some((existing) => view.getCategoryKey(view.normalizeCategoryPath(existing)) === key)) {
+                        view.plugin.data.knownCategories = [...categories, path];
+                        await view.plugin.savePluginData();
+                    }
+                    view.renderCategoryPanel();
+                    view.renderDetailPanel(view.selectedDetailRepoId !== null ? view.combinedRepositoriesById.get(view.selectedDetailRepoId) || null : null);
+                    this.close();
+                });
+                input.focus();
+            }
+        }
+        new CreateCategoryModal(this.app).open();
+    }
+
+    private openCategoryContextMenu(categoryPath: string[], event: MouseEvent): void {
+        const normalizedPath = this.normalizeCategoryPath(categoryPath);
+        const menu = new Menu();
+        menu.addItem((item) => item
+            .setTitle('Create subcategory')
+            .setIcon('folder-plus')
+            .onClick(() => this.openCreateCategoryModal(normalizedPath)));
+        menu.addSeparator();
+        menu.addItem((item) => item
+            .setTitle('Delete category')
+            .setIcon('trash-2')
+            .onClick(() => {
+                void this.deleteCategoryPath(normalizedPath);
+            }));
+        menu.showAtMouseEvent(event);
+    }
+
+    private async deleteCategoryPath(categoryPath: string[]): Promise<void> {
+        const key = this.getCategoryKey(categoryPath);
+        if (!key) return;
+        this.plugin.data.knownCategories = (this.plugin.data.knownCategories || [])
+            .filter((path) => {
+                const existing = this.normalizeCategoryPath(path);
+                return !this.getCategoryKey(existing).startsWith(key);
+            });
+        Object.values(this.plugin.data.userEnhancements).forEach((enhancement) => {
+            const path = this.normalizeCategoryPath(enhancement.categoryPath);
+            if (this.getCategoryKey(path).startsWith(key)) {
+                enhancement.categoryPath = [];
+                if (enhancement.status !== 'archived') {
+                    enhancement.status = 'inbox';
+                }
+            }
+        });
+        await this.plugin.savePluginData();
+        this.userEnhancements = this.plugin.data.userEnhancements || {};
+        this.rebuildCombinedRepositoriesCache();
+        this.selectedCategoryPath = [];
+        this.currentLayoutMode = 'home';
+        this.renderCategoryPanel();
+        this.requestTagsFilterUpdate();
+        this.requestRepositoriesRender();
+    }
+
+    private showCategoryDirectoryTemporarily(): void {
+        this.isCategoryDirectoryOpen = true;
+        if (this.categoryDirectoryHideTimer !== null) {
+            window.clearTimeout(this.categoryDirectoryHideTimer);
+        }
+        this.categoryDirectoryHideTimer = window.setTimeout(() => {
+            this.isCategoryDirectoryOpen = false;
+            this.renderCategoryPanel();
+        }, 4000);
+        this.renderCategoryPanel();
+    }
+
+    private getRepositoriesByKnowledgeStatus(status: 'inbox' | 'active' | 'reviewed' | 'archived'): RenderRepository[] {
+        return this.combinedRepositoriesCache.filter((repo) => this.getRepoKnowledgeStatus(repo) === status);
+    }
+
+    private getRecentlyAddedRepositories(limit = 30): RenderRepository[] {
+        return [...this.combinedRepositoriesCache]
+            .sort((left, right) => {
+                const leftTime = left.starred_at ? Date.parse(left.starred_at) : 0;
+                const rightTime = right.starred_at ? Date.parse(right.starred_at) : 0;
+                return rightTime - leftTime;
+            })
+            .slice(0, limit);
+    }
+
+    private countByLabel(labels: string[]): Array<{ label: string; count: number }> {
+        const counts = new Map<string, number>();
+        labels.forEach((label) => {
+            const normalized = label.trim() || t('time.unknown');
+            counts.set(normalized, (counts.get(normalized) || 0) + 1);
+        });
+        return Array.from(counts.entries())
+            .map(([label, count]) => ({ label, count }))
+            .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+    }
+
+    private getTopCategoryDistribution(): Array<{ label: string; count: number }> {
+        return this.countByLabel(
+            this.combinedRepositoriesCache.map((repo) => {
+                const categoryPath = this.getRepoCategoryPath(repo);
+                return categoryPath.length > 0 ? categoryPath[0] : t('view.uncategorized');
+            })
+        );
+    }
+
+    private getTopLanguageDistribution(): Array<{ label: string; count: number }> {
+        return this.countByLabel(this.combinedRepositoriesCache.map((repo) => repo.language || t('time.unknown')));
+    }
+
+    private getStatusDistribution(): Array<{ label: string; count: number }> {
+        return this.countByLabel(this.combinedRepositoriesCache.map((repo) => t(`view.status.${this.getRepoKnowledgeStatus(repo)}`)));
+    }
+
+    private getTopTagDistribution(): Array<{ label: string; count: number }> {
+        const labels: string[] = [];
+        this.combinedRepositoriesCache.forEach((repo) => {
+            (repo.tags || []).forEach((tag) => labels.push(tag));
+        });
+        return this.countByLabel(labels);
+    }
+
+    private renderCategoryPanel(): void {
+        if (!this.categoryPanelEl) return;
+        this.categoryPanelEl.empty();
+        this.categoryPanelEl.oncontextmenu = (event) => {
+            event.preventDefault();
+            const menu = new Menu();
+            menu.addItem((item) => item
+                .setTitle('Create category')
+                .setIcon('folder-plus')
+                .onClick(() => this.openCreateCategoryModal()));
+            menu.showAtMouseEvent(event);
+        };
+
+        this.categoryPanelEl.createEl('div', {
+            cls: 'github-stars-nav-title',
+            text: t('view.library')
+        });
+        const libraryEl = this.categoryPanelEl.createDiv('github-stars-library-nav');
+        const libraryItems = [
+            { mode: 'home', icon: 'home', label: t('view.homeLayout'), count: this.combinedRepositoriesCache.length },
+            { mode: 'inbox', icon: 'inbox', label: t('view.inboxLayout'), count: this.getRepositoriesByKnowledgeStatus('inbox').length },
+            { mode: 'all', icon: 'layout-grid', label: t('view.allLayout'), count: this.combinedRepositoriesCache.length },
+            { mode: 'recent', icon: 'clock', label: t('view.recentLayout'), count: this.getRecentlyAddedRepositories().length },
+            { mode: 'archived', icon: 'archive', label: t('view.archivedLayout'), count: this.getRepositoriesByKnowledgeStatus('archived').length }
+        ] as const;
+        libraryItems.forEach((item) => {
+            const button = libraryEl.createEl('button', {
+                cls: `github-stars-library-nav-item${this.currentLayoutMode === item.mode ? ' active' : ''}`
+            });
+            button.type = 'button';
+            const iconEl = button.createSpan('github-stars-nav-icon');
+            setIcon(iconEl, item.icon);
+            button.createEl('span', { cls: 'github-stars-nav-label', text: item.label });
+            button.createEl('span', { cls: 'github-stars-nav-count', text: String(item.count) });
+            button.addEventListener('click', () => {
+                this.currentLayoutMode = item.mode;
+                this.currentSmartFilter = 'all';
+                this.selectedCategoryPath = [];
+                this.renderCategoryPanel();
+                this.clearInvisibleSelections();
+                this.requestTagsFilterUpdate();
+                this.requestRepositoriesRender();
+            });
+        });
+
+        this.categoryPanelEl.createEl('div', {
+            cls: 'github-stars-nav-title github-stars-nav-title-secondary',
+            text: t('view.categoryLayout')
+        });
+        const summaries = this.getAllCategorySummaries();
+        const listEl = this.categoryPanelEl.createDiv('github-stars-category-list');
+        if (summaries.length === 0) {
+            listEl.createEl('div', {
+                cls: 'github-stars-category-empty',
+                text: t('view.noCategories')
+            });
+            return;
+        }
+
+        summaries.forEach((summary) => {
+            const isActive = this.getCategoryKey(summary.path) === this.getCategoryKey(this.selectedCategoryPath);
+            const itemEl = listEl.createEl('button', {
+                cls: `github-stars-category-item${isActive ? ' active' : ''}`
+            });
+            itemEl.type = 'button';
+            itemEl.setCssProps({ '--category-depth': String(Math.max(0, summary.path.length - 1)) });
+            itemEl.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (summary.path.length > 0) {
+                    this.openCategoryContextMenu(summary.path, event);
+                } else {
+                    const menu = new Menu();
+                    menu.addItem((item) => item
+                        .setTitle('Create category')
+                        .setIcon('folder-plus')
+                        .onClick(() => this.openCreateCategoryModal()));
+                    menu.showAtMouseEvent(event);
+                }
+            });
+            const branchEl = itemEl.createSpan('github-stars-category-branch');
+            setIcon(branchEl, summary.path.length > 1 ? 'corner-down-right' : 'chevron-right');
+            itemEl.createEl('span', {
+                cls: 'github-stars-category-name',
+                text: summary.path.length > 0 ? summary.path[summary.path.length - 1] : t('view.uncategorized')
+            });
+            itemEl.createEl('span', {
+                cls: 'github-stars-category-count',
+                text: String(summary.count)
+            });
+            itemEl.addEventListener('click', () => {
+                this.currentLayoutMode = 'category';
+                this.currentSmartFilter = 'all';
+                this.selectedCategoryPath = [...summary.path];
+                this.isCategoryDirectoryOpen = true;
+                this.renderCategoryPanel();
+                this.clearInvisibleSelections();
+                this.requestTagsFilterUpdate();
+                this.requestRepositoriesRender();
+            });
+        });
+    }
+
     private getCurrentLoadedRepositories(): RenderRepository[] {
         if (this.latestVisibleRepositories.length === 0 || this.repoVisibleLimit <= 0) {
             return [];
@@ -1539,6 +3063,14 @@ export class GithubStarsView extends ItemView {
 
         const actionEl = target.closest<HTMLElement>('[data-repo-action]');
         if (!actionEl || !this.repoContainer.contains(actionEl)) {
+            const cardEl = target.closest<HTMLElement>('.github-stars-repo');
+            if (cardEl && this.repoContainer.contains(cardEl)) {
+                const repoId = this.parseRepoId(cardEl.dataset.repoId);
+                if (repoId !== null) {
+                    this.selectedDetailRepoId = repoId;
+                    this.renderDetailPanel(this.combinedRepositoriesById.get(repoId) || null);
+                }
+            }
             return;
         }
 
@@ -1571,6 +3103,22 @@ export class GithubStarsView extends ItemView {
             return;
         }
 
+        if (action === 'select-category') {
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+                const categoryPath = JSON.parse(actionEl.dataset.categoryPath || '[]');
+                this.selectedCategoryPath = this.normalizeCategoryPath(categoryPath);
+                this.currentLayoutMode = 'category';
+                this.renderCategoryPanel();
+                this.clearInvisibleSelections();
+                this.requestRepositoriesRender();
+            } catch (error) {
+                console.warn('Invalid category path on repository card:', error);
+            }
+            return;
+        }
+
         if (action === 'edit-repo') {
             event.preventDefault();
             const repoId = this.resolveRepoIdFromActionElement(actionEl);
@@ -1597,9 +3145,50 @@ export class GithubStarsView extends ItemView {
             }
             if (!linkedNotePath) return;
 
-            this.app.workspace.openLinkText(linkedNotePath, '', false).catch((err) =>
+            const linkedNoteFile = this.getLinkedNoteFile(linkedNotePath);
+            if (!linkedNoteFile) {
+                new Notice(t('view.createDetailDoc'));
+                return;
+            }
+            this.app.workspace.getLeaf(false).openFile(linkedNoteFile).catch((err) =>
                 console.error('Failed to open linked note:', err)
             );
+            return;
+        }
+
+        if (action === 'open-or-create-detail-note') {
+            event.preventDefault();
+            const repoId = this.resolveRepoIdFromActionElement(actionEl);
+            if (repoId === null) return;
+            const originalGithubRepo = this.githubRepositories.find((item) => item.id === repoId);
+            if (!originalGithubRepo) {
+                new Notice(t('view.cannotEditRepo'));
+                return;
+            }
+
+            const enhancement = this.plugin.data.userEnhancements[repoId];
+            const linkedNotePath = enhancement?.linked_note?.trim();
+            const linkedNoteFile = this.getLinkedNoteFile(linkedNotePath);
+            if (linkedNoteFile) {
+                this.app.workspace.getLeaf(false).openFile(linkedNoteFile).catch((err) =>
+                    console.error('Failed to open linked note:', err)
+                );
+                return;
+            }
+
+            this.plugin.createRepositoryDetailNote(originalGithubRepo).then((path) => {
+                if (path && this.plugin.settings.noteSettings.openAfterCreate) {
+                    const createdFile = this.getLinkedNoteFile(path);
+                    if (createdFile) {
+                        this.app.workspace.getLeaf(false).openFile(createdFile).catch((err) =>
+                            console.error('Failed to open generated detail note:', err)
+                        );
+                    }
+                }
+            }).catch((err) => {
+                console.error('Failed to create repository detail note:', err);
+                new Notice(t('view.detailDocCreateFailed'));
+            });
             return;
         }
 
@@ -2332,6 +3921,12 @@ export class GithubStarsView extends ItemView {
      */
     updateTagsFilter(container: HTMLElement) {
         container.empty();
+        container.removeClass('is-collapsed');
+        this.closeTagEditPopover();
+        this.renderSmartFilterBar(container);
+        this.renderActiveFilterChips(container);
+        return;
+
         this.renderTagManageToggleButton(container);
         if (this.isTagManageMode) {
             this.renderTagAddButton(container);
@@ -2505,6 +4100,294 @@ export class GithubStarsView extends ItemView {
         }
     }
 
+    private renderSmartFilterBar(container: HTMLElement): void {
+        const smartBar = container.createDiv('github-stars-smart-filter-bar');
+        const smartViews: Array<{ key: SmartRepositoryFilter | 'inbox'; label: string; count: number }> = [
+            { key: 'all', label: t('view.smartAll'), count: this.getSmartFilterCount('all') }
+        ];
+
+        smartViews.forEach((item) => {
+            const isInbox = item.key === 'inbox';
+            const isActive = isInbox
+                ? this.currentLayoutMode === 'inbox'
+                : this.currentLayoutMode !== 'inbox' && this.currentSmartFilter === item.key;
+            const button = smartBar.createEl('button', {
+                cls: `github-stars-smart-filter${isActive ? ' active' : ''}`
+            });
+            button.type = 'button';
+            button.createSpan({ text: item.label });
+            if (item.key !== 'all' || item.count > 0) {
+                button.createSpan({ cls: 'github-stars-smart-filter-count', text: String(item.count) });
+            }
+            button.addEventListener('click', () => {
+                if (isInbox) {
+                    this.currentLayoutMode = 'inbox';
+                    this.currentSmartFilter = 'all';
+                    this.selectedCategoryPath = [];
+                } else {
+                    if (this.currentLayoutMode === 'home' || this.currentLayoutMode === 'inbox') {
+                        this.currentLayoutMode = 'all';
+                    }
+                    this.currentSmartFilter = item.key as SmartRepositoryFilter;
+                    if (item.key === 'all') {
+                        this.selectedCategoryPath = [];
+                    }
+                }
+                this.renderCategoryPanel();
+                this.clearInvisibleSelections();
+                this.requestTagsFilterUpdate();
+                this.requestRepositoriesRender();
+            });
+        });
+
+        const addFilterButton = smartBar.createEl('button', {
+            cls: 'github-stars-add-filter',
+            text: t('view.addFilter')
+        });
+        addFilterButton.type = 'button';
+        addFilterButton.addEventListener('click', () => this.openFilterDrawer());
+    }
+
+    private renderActiveFilterChips(container: HTMLElement): void {
+        const activeTags = this.getActiveTagFiltersNormalized();
+        const showSmartChip = this.currentSmartFilter !== 'all' && this.currentLayoutMode !== 'inbox';
+        if (activeTags.length === 0 && !showSmartChip) {
+            return;
+        }
+
+        const chipsEl = container.createDiv('github-stars-active-filter-chips');
+        chipsEl.createSpan({ cls: 'github-stars-active-filter-label', text: t('view.activeFilters') });
+
+        if (showSmartChip) {
+            const chip = chipsEl.createEl('button', {
+                cls: 'github-stars-active-filter-chip',
+                text: `${this.getSmartFilterLabel(this.currentSmartFilter)} x`
+            });
+            chip.type = 'button';
+            chip.addEventListener('click', () => {
+                this.currentSmartFilter = 'all';
+                this.requestTagsFilterUpdate();
+                this.clearInvisibleSelections();
+                this.requestRepositoriesRender();
+            });
+        }
+
+        activeTags.forEach((normalizedTag) => {
+            const displayTag = this.getCanonicalTagName(normalizedTag);
+            const chip = chipsEl.createEl('button', {
+                cls: 'github-stars-active-filter-chip',
+                text: `${displayTag} x`
+            });
+            chip.type = 'button';
+            this.applyTagColorStyle(chip, displayTag);
+            chip.addEventListener('click', () => {
+                this.filterByTags.delete(normalizedTag);
+                this.requestTagsFilterUpdate();
+                this.clearInvisibleSelections();
+                this.requestRepositoriesRender();
+            });
+        });
+
+        const clearButton = chipsEl.createEl('button', {
+            cls: 'github-stars-active-filter-clear',
+            text: t('view.clearTagFilters')
+        });
+        clearButton.type = 'button';
+        clearButton.addEventListener('click', () => {
+            this.currentSmartFilter = 'all';
+            this.filterByTags.clear();
+            this.requestTagsFilterUpdate();
+            this.clearInvisibleSelections();
+            this.requestRepositoriesRender();
+        });
+    }
+
+    private getCanonicalTagName(normalizedTag: string): string {
+        return this.allTags.find((tag) => this.normalizeTagName(tag) === normalizedTag) || normalizedTag;
+    }
+
+    private getSmartFilterLabel(filter: SmartRepositoryFilter): string {
+        switch (filter) {
+            case 'needs_review':
+                return t('view.smartNeedsReview');
+            case 'unclassified':
+                return t('view.smartUnclassified');
+            case 'no_notes':
+                return t('view.smartNoNotes');
+            case 'no_links':
+                return t('view.smartNoLinks');
+            case 'low_rating':
+                return t('view.smartLowRating');
+            case 'all':
+            default:
+                return t('view.smartAll');
+        }
+    }
+
+    private getSmartFilterCount(filter: SmartRepositoryFilter): number {
+        return this.combinedRepositoriesCache.filter((repo) =>
+            this.isRepoVisibleByAccount(repo) &&
+            this.getRepoKnowledgeStatus(repo) !== 'archived' &&
+            this.matchesSmartFilter(repo, filter)
+        ).length;
+    }
+
+    private matchesSmartFilter(repo: RenderRepository, filter: SmartRepositoryFilter = this.currentSmartFilter): boolean {
+        switch (filter) {
+            case 'needs_review':
+                return this.getRepoKnowledgeStatus(repo) === 'inbox' || !repo.personalReview?.trim();
+            case 'unclassified':
+                return this.getRepoCategoryPath(repo).length === 0;
+            case 'no_notes':
+                return !this.isRepoLinkedToNote(repo);
+            case 'no_links':
+                return normalizeProjectLinks(repo.project_links).length === 0;
+            case 'low_rating':
+                return typeof repo.rating === 'number' && repo.rating > 0 && repo.rating <= 2;
+            case 'all':
+            default:
+                return true;
+        }
+    }
+
+    private openFilterDrawer(): void {
+        const view = this;
+        class FilterDrawerModal extends Modal {
+            onOpen() {
+                const { contentEl } = this;
+                contentEl.empty();
+                contentEl.addClass('github-stars-filter-drawer');
+                contentEl.createEl('h2', { text: t('view.filterDrawerTitle') });
+
+                const statusSection = contentEl.createDiv('github-stars-filter-section');
+                statusSection.createEl('h3', { text: t('view.filterByStatus') });
+                const statusGrid = statusSection.createDiv('github-stars-filter-chip-grid');
+                ([
+                    'all',
+                    'needs_review',
+                    'unclassified',
+                    'no_notes',
+                    'no_links',
+                    'low_rating'
+                ] as SmartRepositoryFilter[]).forEach((filter) => {
+                    const button = statusGrid.createEl('button', {
+                        cls: `github-stars-filter-chip${view.currentSmartFilter === filter ? ' active' : ''}`,
+                        text: `${view.getSmartFilterLabel(filter)} ${view.getSmartFilterCount(filter)}`
+                    });
+                    button.type = 'button';
+                    button.addEventListener('click', () => {
+                        view.currentSmartFilter = filter;
+                        if (view.currentLayoutMode === 'home' || view.currentLayoutMode === 'inbox') {
+                            view.currentLayoutMode = 'all';
+                        }
+                        view.renderCategoryPanel();
+                        view.requestTagsFilterUpdate();
+                        view.clearInvisibleSelections();
+                        view.requestRepositoriesRender();
+                    });
+                });
+
+                const tagSection = contentEl.createDiv('github-stars-filter-section');
+                tagSection.createEl('h3', { text: t('view.filterByTags') });
+                const tagsGrid = tagSection.createDiv('github-stars-filter-chip-grid');
+                const tagCounts = view.getGlobalTagCounts();
+                if (view.allTags.length === 0) {
+                    tagsGrid.createSpan({ cls: 'github-stars-filter-empty', text: t('view.noTags') });
+                } else {
+                    view.allTags.forEach((tag) => {
+                        const normalizedTag = view.normalizeTagName(tag);
+                        const isActive = view.filterByTags.get(normalizedTag) || false;
+                        const button = tagsGrid.createEl('button', {
+                            cls: `github-stars-filter-chip${isActive ? ' active' : ''}`,
+                            text: `${tag} ${tagCounts.get(normalizedTag) || 0}`
+                        });
+                        button.type = 'button';
+                        view.applyTagColorStyle(button, tag);
+                        button.addEventListener('click', () => {
+                            view.filterByTags.set(normalizedTag, !isActive);
+                            this.close();
+                            view.openFilterDrawer();
+                            view.requestTagsFilterUpdate();
+                            view.clearInvisibleSelections();
+                            view.requestRepositoriesRender();
+                        });
+                    });
+                }
+
+                const languageSection = contentEl.createDiv('github-stars-filter-section');
+                languageSection.createEl('h3', { text: t('view.filterByLanguage') });
+                const languageGrid = languageSection.createDiv('github-stars-filter-chip-grid');
+                view.getTopLanguages(12).forEach(({ language, count }) => {
+                    const button = languageGrid.createEl('button', {
+                        cls: 'github-stars-filter-chip',
+                        text: `${language} ${count}`
+                    });
+                    button.type = 'button';
+                    button.addEventListener('click', () => {
+                        view.searchInput.value = language;
+                        view.currentFilter = language.toLowerCase();
+                        view.requestTagsFilterUpdate();
+                        view.clearInvisibleSelections();
+                        view.requestRepositoriesRender();
+                        this.close();
+                    });
+                });
+
+                const actions = contentEl.createDiv('github-stars-filter-actions');
+                const manageButton = actions.createEl('button', {
+                    cls: 'github-stars-filter-secondary',
+                    text: t('view.manageTaxonomy')
+                });
+                manageButton.type = 'button';
+                manageButton.addEventListener('click', () => {
+                    view.isTagManageMode = true;
+                    this.close();
+                    new Notice(t('view.tagManageModeOn'));
+                });
+
+                const clearButton = actions.createEl('button', {
+                    cls: 'github-stars-filter-primary',
+                    text: t('view.clearTagFilters')
+                });
+                clearButton.type = 'button';
+                clearButton.addEventListener('click', () => {
+                    view.currentSmartFilter = 'all';
+                    view.filterByTags.clear();
+                    view.requestTagsFilterUpdate();
+                    view.clearInvisibleSelections();
+                    view.requestRepositoriesRender();
+                    this.close();
+                });
+            }
+        }
+
+        new FilterDrawerModal(this.app).open();
+    }
+
+    private getGlobalTagCounts(): Map<string, number> {
+        const counts = new Map<string, number>();
+        Object.values(this.userEnhancements).forEach((enhancement) => {
+            (enhancement.tags || []).forEach((tag) => {
+                const normalizedTag = this.normalizeTagName(tag);
+                counts.set(normalizedTag, (counts.get(normalizedTag) || 0) + 1);
+            });
+        });
+        return counts;
+    }
+
+    private getTopLanguages(limit: number): Array<{ language: string; count: number }> {
+        const counts = new Map<string, number>();
+        this.combinedRepositoriesCache.forEach((repo) => {
+            if (!this.isRepoVisibleByAccount(repo)) return;
+            const language = repo.language || t('view.unknownLanguage');
+            counts.set(language, (counts.get(language) || 0) + 1);
+        });
+        return Array.from(counts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, limit)
+            .map(([language, count]) => ({ language, count }));
+    }
+
     private calculateCollapsedVisibleTagCount(options: {
         container: HTMLElement;
         orderedTags: string[];
@@ -2596,6 +4479,27 @@ export class GithubStarsView extends ItemView {
             this.requestPerformancePanelRefresh();
             return;
         }
+
+        if (this.currentLayoutMode === 'home') {
+            this.renderDashboard();
+            this.updateTotalStarsCount(this.combinedRepositoriesCache.length);
+            this.latestVisibleRepositories = [];
+            this.hasVisibleRepositoriesSnapshot = true;
+            this.finalizeInteractionMeasurement();
+            this.requestPerformancePanelRefresh();
+            return;
+        }
+
+        if (this.currentLayoutMode === 'settings') {
+            this.renderSettingsView();
+            this.updateTotalStarsCount(this.combinedRepositoriesCache.length);
+            this.latestVisibleRepositories = [];
+            this.hasVisibleRepositoriesSnapshot = true;
+            this.finalizeInteractionMeasurement();
+            this.requestPerformancePanelRefresh();
+            return;
+        }
+
         let sortedRepos: RenderRepository[] = [];
         try {
             await this.syncQueryDataIfNeeded();
@@ -2609,6 +4513,7 @@ export class GithubStarsView extends ItemView {
             sortedRepos = queryResult.orderedIds
                 .map((repoId) => this.combinedRepositoriesById.get(repoId))
                 .filter((repo): repo is RenderRepository => Boolean(repo));
+            sortedRepos = this.filterRepositories(sortedRepos);
         } catch (error) {
             console.warn('Worker query failed, fallback to main thread query:', error);
             const fallbackStartAt = performance.now();
@@ -2616,6 +4521,16 @@ export class GithubStarsView extends ItemView {
             this.recordPerformanceDuration('query', performance.now() - fallbackStartAt);
         }
         if (renderVersion !== this.repoRenderVersion) return;
+
+        if (this.currentLayoutMode === 'recent') {
+            sortedRepos = sortedRepos
+                .sort((left, right) => {
+                    const leftTime = left.starred_at ? Date.parse(left.starred_at) : 0;
+                    const rightTime = right.starred_at ? Date.parse(right.starred_at) : 0;
+                    return rightTime - leftTime;
+                })
+                .slice(0, 30);
+        }
 
         if (sortedRepos.length === 0) {
             this.resetRepoRenderWindowState();
@@ -2631,6 +4546,11 @@ export class GithubStarsView extends ItemView {
         this.latestVisibleRepositories = sortedRepos;
         this.hasVisibleRepositoriesSnapshot = true;
         this.updateTotalStarsCount(sortedRepos.length);
+        if (this.selectedDetailRepoId !== null) {
+            this.renderDetailPanel(this.combinedRepositoriesById.get(this.selectedDetailRepoId) || null);
+        } else {
+            this.renderDetailPanel(null);
+        }
         sortedRepos = this.getRepositoriesInRenderWindow(sortedRepos);
         if (renderVersion !== this.repoRenderVersion) return;
 
@@ -2655,10 +4575,19 @@ export class GithubStarsView extends ItemView {
             const enhancement = this.userEnhancements[githubRepo.id] || {
                 notes: '',
                 tags: [],
+                categoryPath: [],
+                status: undefined,
+                rating: undefined,
+                personalSummary: '',
+                personalReview: '',
                 linked_note: undefined,
                 project_links: []
             };
-            return { ...githubRepo, ...enhancement };
+            return {
+                ...githubRepo,
+                ...enhancement,
+                categoryPath: this.normalizeCategoryPath(enhancement.categoryPath)
+            };
         });
         this.combinedRepositoriesById = new Map(
             this.combinedRepositoriesCache.map((repo) => [repo.id, repo] as const)
@@ -2677,6 +4606,7 @@ export class GithubStarsView extends ItemView {
             notes: repo.notes,
             language: repo.language,
             tags: repo.tags || [],
+            categoryPath: this.getRepoCategoryPath(repo),
             account_id: repo.account_id,
             stargazers_count: repo.stargazers_count,
             forks_count: repo.forks_count,
@@ -2691,6 +4621,7 @@ export class GithubStarsView extends ItemView {
 
     private buildRepoQueryDataSignature(repo: RepoQueryDataItem): string {
         const tags = Array.isArray(repo.tags) ? repo.tags : [];
+        const categoryPath = this.normalizeCategoryPath(repo.categoryPath);
         return [
             String(repo.id),
             repo.name || '',
@@ -2700,6 +4631,7 @@ export class GithubStarsView extends ItemView {
             repo.notes || '',
             repo.language || '',
             tags.join('\u0001'),
+            categoryPath.join('\u0001'),
             repo.account_id || '',
             String(repo.stargazers_count ?? 0),
             String(repo.forks_count ?? 0),
@@ -2766,6 +4698,7 @@ export class GithubStarsView extends ItemView {
         return {
             textFilter: this.currentFilter || '',
             activeTagFilters: this.getActiveTagFiltersNormalized(),
+            activeCategoryPath: this.currentLayoutMode === 'category' ? [...this.selectedCategoryPath] : [],
             enabledAccountIds: Array.from(this.getEnabledAccountIdSet()),
             sortBy: this.sortBy,
             sortOrder: this.sortOrder
@@ -2782,8 +4715,32 @@ export class GithubStarsView extends ItemView {
             if (!this.isRepoVisibleByAccount(repo)) {
                 return false;
             }
+            const knowledgeStatus = this.getRepoKnowledgeStatus(repo);
+            if (this.currentLayoutMode === 'inbox' && knowledgeStatus !== 'inbox') {
+                return false;
+            }
+            if (this.currentLayoutMode === 'archived' && knowledgeStatus !== 'archived') {
+                return false;
+            }
+            if (
+                (this.currentLayoutMode === 'all' || this.currentLayoutMode === 'recent' || this.currentLayoutMode === 'category') &&
+                knowledgeStatus === 'archived'
+            ) {
+                return false;
+            }
             if (!this.matchesCurrentTextFilter(repo)) {
                 return false;
+            }
+            if (!this.matchesSmartFilter(repo)) {
+                return false;
+            }
+            if (this.currentLayoutMode === 'category' && this.selectedCategoryPath.length > 0) {
+                const repoCategoryPath = this.getRepoCategoryPath(repo).map((segment) => segment.toLowerCase());
+                const selectedPath = this.selectedCategoryPath.map((segment) => segment.toLowerCase());
+                const matchesCategory = selectedPath.every((segment, index) => repoCategoryPath[index] === segment);
+                if (!matchesCategory) {
+                    return false;
+                }
             }
             if (activeTags.length === 0) {
                 return true;
@@ -3196,7 +5153,29 @@ export class GithubStarsView extends ItemView {
         linkEl.setAttribute('tabindex', '0');
 
         const tags = Array.isArray(repo.tags) ? repo.tags : [];
+        const categoryPath = this.getRepoCategoryPath(repo);
         const projectLinks = normalizeProjectLinks(repo.project_links);
+        if (categoryPath.length > 0) {
+            const categoryEl = titleGroupEl.createEl('button', {
+                cls: 'github-stars-repo-category',
+                text: this.formatCategoryPath(categoryPath)
+            });
+            categoryEl.type = 'button';
+            categoryEl.setAttribute('data-repo-action', 'select-category');
+            categoryEl.setAttribute('data-category-path', JSON.stringify(categoryPath));
+            categoryEl.setAttribute('title', this.formatCategoryPath(categoryPath));
+        }
+        const statusMetaEl = titleGroupEl.createDiv('github-stars-repo-kms-meta');
+        statusMetaEl.createEl('span', {
+            cls: `github-stars-repo-status github-stars-repo-status-${this.getRepoKnowledgeStatus(repo)}`,
+            text: t(`view.status.${this.getRepoKnowledgeStatus(repo)}`)
+        });
+        if (typeof repo.rating === 'number' && repo.rating > 0) {
+            statusMetaEl.createEl('span', {
+                cls: 'github-stars-repo-rating',
+                text: `${repo.rating}/5`
+            });
+        }
         if (tags.length > 0) {
             const titleTagsEl = titleGroupEl.createEl('div', { cls: 'github-stars-repo-title-tags' });
             tags.forEach((tag) => {
@@ -3262,6 +5241,11 @@ export class GithubStarsView extends ItemView {
             }
         }
 
+        if (repo.personalSummary?.trim()) {
+            const summaryEl = repoEl.createEl('div', { cls: 'github-stars-repo-personal-summary' });
+            summaryEl.textContent = repo.personalSummary.trim();
+        }
+
         const secondaryContentEl = repoEl.createDiv('github-stars-repo-secondary');
         const footerEl = repoEl.createEl('div', { cls: 'github-stars-repo-footer' });
         const infoRow = footerEl.createEl('div', { cls: 'github-stars-repo-info' });
@@ -3296,6 +5280,15 @@ export class GithubStarsView extends ItemView {
             text: t('view.editRepo')
         });
 
+        const detailButton = footerEl.createEl('button', { cls: 'github-stars-repo-detail' });
+        const hasLinkedNoteFile = this.isRepoLinkedToNote(repo);
+        detailButton.setAttribute('data-repo-action', 'open-or-create-detail-note');
+        detailButton.setAttribute('data-repo-id', String(repo.id));
+        detailButton.setAttribute('aria-label', t('view.detailDoc'));
+        detailButton.setAttribute('title', hasLinkedNoteFile ? t('view.openDetailDoc') : t('view.createDetailDoc'));
+        const detailIcon = detailButton.createEl('span', { cls: 'github-stars-repo-detail-icon' });
+        setIcon(detailIcon, hasLinkedNoteFile ? 'file-text' : 'file-plus');
+
         this.scheduleRepoSecondaryContentMount(repoEl, secondaryContentEl, repo);
         return repoEl;
     }
@@ -3312,16 +5305,17 @@ export class GithubStarsView extends ItemView {
             contentEl.textContent = repo.notes;
         }
 
-        if (repo.linked_note) {
+        const linkedNotePath = repo.linked_note?.trim();
+        if (linkedNotePath && this.isRepoLinkedToNote(repo)) {
             const linkedNoteEl = containerEl.createEl('div', { cls: 'github-stars-repo-linked-note' });
             setIcon(linkedNoteEl, GITHUB_STARS_EXTERNAL_LINK_ICON_ID);
             const link = linkedNoteEl.createEl('a', {
-                text: repo.linked_note,
+                text: linkedNotePath,
                 href: '#',
                 cls: 'internal-link'
             });
             link.setAttribute('data-repo-action', 'open-linked-note');
-            link.setAttribute('data-linked-note', repo.linked_note);
+            link.setAttribute('data-linked-note', linkedNotePath);
             link.setAttribute('data-repo-id', String(repo.id));
         }
 
@@ -3524,6 +5518,29 @@ export class GithubStarsView extends ItemView {
         const rightButtonsContainer = toolbarDiv.createDiv('github-stars-toolbar-right');
         this.performanceToggleButton = null;
 
+        const filterButton = rightButtonsContainer.createEl('button', { cls: 'github-stars-filter-button' });
+        setIcon(filterButton, 'list-filter');
+        filterButton.createSpan({ text: t('view.filterButton') });
+        filterButton.type = 'button';
+        filterButton.setAttribute('aria-label', t('view.filterButton'));
+        filterButton.setAttribute('title', t('view.filterButton'));
+        filterButton.addEventListener('click', () => this.openFilterDrawer());
+
+        const settingsButton = rightButtonsContainer.createEl('button', { cls: 'github-stars-settings-button' });
+        setIcon(settingsButton, 'settings');
+        settingsButton.createSpan({ text: 'Settings' });
+        settingsButton.type = 'button';
+        settingsButton.setAttribute('aria-label', 'Settings');
+        settingsButton.setAttribute('title', 'Settings');
+        settingsButton.addEventListener('click', () => {
+            this.currentLayoutMode = 'settings';
+            this.currentSmartFilter = 'all';
+            this.selectedCategoryPath = [];
+            this.renderCategoryPanel();
+            this.requestTagsFilterUpdate();
+            this.requestRepositoriesRender();
+        });
+
         if (this.isPerformanceMonitorEnabled()) {
             const perfToggleButton = rightButtonsContainer.createEl('button', {
                 cls: 'github-stars-perf-button',
@@ -3636,6 +5653,7 @@ export class GithubStarsView extends ItemView {
         this.pruneInvalidTagEditingState();
         this.updateTagManageToggleButton();
         this.closeTagEditPopover();
+        this.renderCategoryPanel();
         const container = this.containerEl.children[1] as HTMLElement | undefined;
         if (container) {
             this.ensurePerformancePanelMount(container);
@@ -4101,6 +6119,7 @@ export class GithubStarsView extends ItemView {
         this.stopPerformanceFrameMonitor();
         this.pendingInteractionStartAt = null;
         this.performanceToggleButton = null;
+        this.categoryPanelEl = null;
         this.removePerformancePanel();
         this.resetRepoAvatarObserver();
         this.repoAvatarObserver = null;

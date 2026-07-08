@@ -13,6 +13,22 @@ export interface GithubAccount {
 }
 
 // 插件设置接口 (修改为支持多账号)
+export type RepositoryKnowledgeStatus = 'inbox' | 'active' | 'reviewed' | 'archived';
+export type NoteMoveStrategy = 'auto' | 'keep' | 'ask';
+
+export interface NoteSettings {
+    rootFolder: string;
+    filenameTemplate: string;
+    templateId?: 'default' | 'research' | 'implementation' | 'custom';
+    customTemplate?: string;
+    moveStrategy: NoteMoveStrategy;
+    openAfterCreate: boolean;
+    autoUpdateManagedSection: boolean;
+    autoWriteCategoryLinks: boolean;
+    autoWriteTagLinks: boolean;
+    autoCreateCategoryIndex: boolean;
+}
+
 export type RepoRenderPerformanceMode = 'visual' | 'balanced';
 
 export interface GithubStarsSettings {
@@ -86,6 +102,7 @@ export interface RepoProjectLink {
 export interface UserRepoEnhancements {
     notes: string;
     tags: string[];
+    categoryPath?: string[];
     linked_note?: string;
     project_links?: RepoProjectLink[];
     repoSnapshot?: UserEnhancementRepoSnapshot;
@@ -108,6 +125,7 @@ export interface PluginData {
     userEnhancements: {
         [repoId: number]: UserRepoEnhancements;
     };
+    knownCategories?: string[][];
     // 全局标签列表 (从 userEnhancements 动态生成或单独存储)
     // 为了简单起见，暂时可以每次渲染时从 userEnhancements 动态生成
     // 或者在保存 userEnhancements 时更新一个单独的 allTags 列表
@@ -133,6 +151,18 @@ export interface PluginData {
 export interface CombinedPluginData {
     settings: GithubStarsSettings;
     pluginData: PluginData;
+}
+
+export interface GithubStarsSettings {
+    noteSettings: NoteSettings;
+}
+
+export interface UserRepoEnhancements {
+    status?: RepositoryKnowledgeStatus;
+    rating?: number;
+    personalSummary?: string;
+    personalReview?: string;
+    archivedAt?: string;
 }
 
 // 移除 LocalRepository 接口，因为它被 githubRepositories 和 userEnhancements 替代了
@@ -166,6 +196,8 @@ export interface ExportOptions {
     includeProperties: boolean;
     // Properties模板配置
     propertiesTemplate: PropertyTemplate[];
+    noteTemplateId?: 'default' | 'research' | 'implementation' | 'custom';
+    customNoteTemplate?: string;
 }
 
 // 导出结果接口
@@ -325,6 +357,34 @@ export const DEFAULT_PROPERTIES_TEMPLATE: PropertyTemplate[] = [
         value: '{{user_tags}}',
         type: 'tags',
         description: '用户标签',
+        enabled: true
+    },
+    {
+        key: 'GSM-category',
+        value: '{{category}}',
+        type: 'text',
+        description: '项目多级分类',
+        enabled: true
+    },
+    {
+        key: 'GSM-status',
+        value: '{{status}}',
+        type: 'text',
+        description: '整理状态',
+        enabled: true
+    },
+    {
+        key: 'GSM-rating',
+        value: '{{rating}}',
+        type: 'number',
+        description: '个人评分',
+        enabled: false
+    },
+    {
+        key: 'GSM-personal-summary',
+        value: '{{personal_summary}}',
+        type: 'text',
+        description: '个人说明',
         enabled: true
     },
     {

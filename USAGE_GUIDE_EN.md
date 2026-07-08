@@ -1,342 +1,206 @@
 # GitHub Stars Manager Usage Guide
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Feature Overview](#feature-overview)
-- [Advanced Usage](#advanced-usage)
-- [Troubleshooting](#troubleshooting)
-- [Best Practices](#best-practices)
-
 ## Quick Start
 
-### First Time Setup
+1. Install and enable the plugin.
+2. Add a GitHub account and Personal Access Token in settings.
+3. Open the GitHub Stars Manager view.
+4. Click Sync to fetch starred repositories.
+5. Use Home for overview and Inbox for triage.
 
-1. **Install Plugin**
-   - Search for "GitHub Stars Manager" in Obsidian Community Plugins
-   - Click Install and Enable
+## Home Dashboard
 
-2. **Configure GitHub Access Token**
-   ```
-   Settings → Community Plugins → GitHub Stars Manager → GitHub Personal Access Token (PAT)
-   ```
-   - Visit [GitHub Settings](https://github.com/settings/tokens)
-   - Create new Classic Token
-   - Prefer the minimum scopes: public starred repositories usually only need `read:user` and `public_repo`
-   - Only use the broader `repo` scope if you need private repository-related data
-   - Copy token to plugin settings
+Home is a dashboard for knowledge-base health. It shows:
 
-3. **Open Plugin View**
-   - Click 🌟 icon in left sidebar
-   - Or use Command Palette: "GitHub Stars Manager"
+- Total stars
+- Inbox count
+- Classified count
+- Linked note count
+- Archived count
+- Recently added count
+- Category distribution
+- Language distribution
+- Review status
+- Top tags
+- Inbox queue
+- Recently organized projects
 
-4. **Initial Sync**
-   - Click "Sync" button in toolbar
-   - Wait for repository data to load
+## Inbox Workflow
 
-## Feature Overview
+Unclassified repositories enter Inbox by default.
 
-### 🔍 Search & Filtering
+Recommended triage flow:
 
-#### Search Box Features
-- **Real-time Search**: Filter repositories as you type
-- **Multi-field Matching**: Search repository name, description, language
-- **Clear Button**: Hover over search box to show × button for quick clearing
+1. Open Inbox.
+2. Click a repository card.
+3. Choose a category.
+4. Add tags.
+5. Set status and rating.
+6. Add personal summary, evaluation, notes, and links.
+7. Create or link an Obsidian note.
 
-```
-Search Examples:
-- "react" - Find repositories containing react
-- "python machine learning" - Find Python ML projects  
-- "typescript" - Find TypeScript projects
-```
+Once a repository has a category, it becomes part of the formal library.
 
-#### Tag Filtering
-- **Click Tags**: Activate tag filter to show only repositories with that tag
-- **Multi-tag Filtering**: Select multiple tags simultaneously
-- **Tag Highlighting**: Matching tags are highlighted during search
-- **Clear Filters**: Click "Clear All" button to remove all tag filters
+## Multi-Level Categories
 
-### 📊 Sorting Options
+Categories are shown in the left sidebar.
 
-Toolbar provides four sorting methods:
+- Right-click the empty category area to create a top-level category.
+- Right-click a category to create a subcategory or delete it.
+- Deleting a category moves affected projects back to Inbox.
+- Repository details can only select existing categories.
+- Typing in the category search box does not create a category by itself.
 
-| Icon | Sort Method | Description |
-|------|-------------|-------------|
-| 📅 | Recently Added | Sort by starred date (newest first) |
-| ⭐ | Star Count | Sort by star count (most stars first) |
-| 🍴 | Fork Count | Sort by fork count (most forks first) |
-| 🔤 | Alphabetical | Sort by repository name |
+Example categories:
 
-**Sort Direction**: Click the active sort button to toggle ascending/descending order
-
-### 🏷️ Tag Management
-
-#### Adding Tags
-1. Click "Edit" button on repository card
-2. Enter tag names in "Tags" field
-3. Separate multiple tags with commas: `frontend, react, typescript`
-4. Click "Save"
-
-#### Automatic Tag Coloring
-Plugin automatically assigns colors to tags with 12 preset colors:
-- Blue, Pink, Cyan, Green, Orange, Purple
-- Red, Orange-red, Lime, Sky-blue, Violet, Rose
-
-#### Using Existing Tags
-When editing repositories, "Existing Tags" list is shown for quick adding:
-```
-Existing Tags Example:
-[frontend] [backend] [mobile] [ai/ml] [tool] [library]
+```text
+Robotics / PX4 / Flight Control
+AI / Agents / Tools
+Simulation / Robot Learning
 ```
 
-### 📝 Notes Feature
+## Tags
 
-#### Adding Repository Notes
-1. Add personal notes in "Notes" field in edit dialog
-2. Supports Markdown format
-3. Can record:
-   - Usage experience
-   - Key features
-   - Personal rating
-   - Learning plan
+Tags are horizontal filters. They do not control note paths.
 
-#### Linking Obsidian Notes
-1. Click "Link Note" button
-2. Search and select existing note file
-3. Creates bidirectional link:
-   - Repository card shows linked note
-   - Note can jump back to repository
+### Add Tags In Repository Details
 
-### 🎨 Interface Layout
+1. Type in the Tags search box.
+2. Select a matching existing tag.
+3. If no tag matches, type a new tag and press Enter.
+4. Click a tag chip to remove it.
 
-The plugin uses one consistent interface style that follows Obsidian's active appearance. There is no separate in-plugin theme switch.
+Repository details auto-save changes.
 
-#### Card Layout
-- Clean Obsidian-native card styling
-- Responsive masonry layout
-- Supports light and dark appearance
-- Designed for quickly scanning many repositories
+### Tag Manager
 
-#### Interaction Details
-- Toolbar keeps sync, search, account filtering, statistics, and tag filtering in one place
-- Tag chips support quick filtering and management
-- Repository cards show avatars, tags, notes, links, stars, forks, and update metadata
-- Hover feedback is clear while minimizing layout shifts
+Open Settings -> Tag manager:
 
-### 👥 Multi-Account Management
+- Search or add tags from one input.
+- Press Enter or click Add to create a tag.
+- Results are shown as compact chips.
+- Click to select a tag.
+- Ctrl/Cmd-click to multi-select.
+- Right-click selected tags or click Delete selected to delete.
+- Tags used by repositories are protected from direct deletion.
 
-#### Adding New Account
-1. Click "Account" dropdown in toolbar
-2. Click "Add Account" button
-3. Enter account information:
-   - Display name (custom)
-   - GitHub username
-   - Personal access token
+## Repository Details
 
-#### Account Management
-- **Enable/Disable**: Use toggle switch to control account sync
-- **Edit Info**: Modify display name or update token
-- **Delete Account**: Remove accounts no longer needed
+Click a repository card to open the right detail panel. Editable fields:
 
-#### Account Status Display
-- Avatar and username
-- Last sync time
-- Enable/disable status
+- Category
+- Tags
+- Status
+- Rating
+- Personal Summary
+- Personal Review
+- Notes
+- Project Links
+- Linked Note
 
-### 📤 Export Features
+The detail panel can be resized by dragging its left edge. All fields auto-save.
 
-#### Export Options
-Support multiple formats for exporting starred repositories:
-- **JSON**: Complete data export
-- **CSV**: Table format for analysis
-- **Markdown**: Document format for sharing
-- **Plain Text**: Simple list format
+Click a rating star to set the rating. Click the current rating again to clear it.
 
-#### Export Steps
-1. Click "Export" button in toolbar
-2. Select repositories to export (supports select all)
-3. Choose export format
-4. Click "Confirm Export"
+## Linked Notes
 
-#### Export Content
-Includes the following information:
-- Repository basic info (name, description, URL)
-- Statistics (star count, fork count)
-- Personal data (tags, notes)
-- Time information (created time, updated time)
+Linked Note connects a GitHub repository to an Obsidian Markdown file.
 
-## Advanced Usage
+- Existing note files open directly.
+- Deleted note files are treated as missing.
+- Opening a missing note does not create a blank file.
+- Creating a note uses the configured note template.
 
-### 🔄 Sync Strategy
+## Note Settings And Templates
 
-#### Auto Sync
-- Automatically sync on plugin startup
-- Can be disabled in settings
+Open Settings -> Note settings to configure:
 
-#### Manual Sync
-- Click "Sync" button for immediate update
-- Supports parallel multi-account sync
-- Shows sync progress and status
+- Root folder
+- Filename rule
+- Template type
+- Custom template
+- Open after create
+- Category links
+- Tag links
 
-#### Incremental Sync
-- Only sync changed repositories
-- Preserve local tags and notes
-- Improve sync efficiency
+Built-in templates:
 
-### 🎯 Advanced Search
+- Default project properties
+- Research review
+- Implementation notes
+- Custom template
 
-#### Search Tips
-```
-Search Syntax Examples:
-- Exact match: Use quotes "exact match"
-- Exclude content: Use minus -unwanted
-- Language search: language:python
-- Combined search: react typescript -vue
+Common variables:
+
+```text
+{{full_name}}
+{{description}}
+{{github_url}}
+{{language}}
+{{stars}}
+{{forks}}
+{{category}}
+{{tags}}
+{{status}}
+{{rating}}
+{{personal_summary}}
+{{personal_review}}
+{{project_links}}
+{{notes}}
 ```
 
-#### Filter Combinations
-- Search + tag filtering work together
-- Sort + filter results are linked
-- Real-time preview of filtered result count
+## Search And Filters
 
-### 📊 Data Management
+The search box matches repository name, description, language, tags, and personal fields.
 
-#### Data Storage
-- Locally stored in Obsidian configuration files
-- Supports cross-device sync (via Obsidian Sync)
-- Data format: JSON
+The top smart view bar is intentionally compact. Use Add filter and the Filter drawer for advanced dimensions:
 
-#### Data Backup
-Regular backup recommended:
-```
-Path: .obsidian/plugins/github-stars-manager/data.json
-```
+- Inbox
+- Needs Review
+- Unclassified
+- No Notes
+- No Links
+- Low Rating
+- Tag
+- Category
+- Language
+- Note status
 
-#### Data Migration
-- Export all data as JSON
-- Import configuration in new environment
-- Maintain tag and note integrity
+## Accounts And Sync
 
-## Troubleshooting
+Account management lives in Settings. Multiple GitHub accounts are supported.
 
-### ❓ Token Issues
+Recommended GitHub token scopes:
 
-**Q: Token invalid error?**
-A: Check the following:
-- Token copied completely
-- Required scopes selected: public stars usually need `read:user` and `public_repo`; private repository-related data requires `repo`
-- Token not expired
-- Using Classic Token (not Fine-grained)
+- `read:user`
+- `public_repo`
 
-**Q: Sync failed?**
-A: Possible causes:
-- Network connection issues
-- GitHub API limits
-- Insufficient token permissions
-- Too many repositories
+Use `repo` only if private repository-related data is needed.
 
-### 🔧 Interface Issues
+## Manual Installation
 
-**Q: Repository cards not displaying properly?**
-A: Try these solutions:
-- Resize Obsidian window
-- Switch Obsidian between light and dark appearance to check the effect
-- Ensure plugin is latest version
+Copy release files to:
 
-**Q: Search results inaccurate?**
-A: Search scope includes:
-- Repository name
-- Repository description
-- Primary language
-- Custom tags
-
-### 💾 Data Issues
-
-**Q: Tags lost?**
-A: Possible causes:
-- Accidental deletion
-- Overwrite during sync
-- Data file corruption
-
-Solutions:
-- Restore from backup
-- Re-add tags
-- Export existing data for backup
-
-**Q: Repository count incorrect after sync?**
-A: Check:
-- Private repositories (need additional permissions)
-- Token has sufficient permissions
-- Multi-account enabled
-
-## Best Practices
-
-### 🏷️ Tag Naming Suggestions
-
-#### By Technology
-```
-Frontend: frontend, react, vue, angular
-Backend: backend, nodejs, python, java
-Mobile: mobile, ios, android, flutter
+```text
+VaultFolder/.obsidian/plugins/github-stars-manager/
 ```
 
-#### By Purpose
-```
-Tools: tool, utility, cli, devtool
-Learning: learning, tutorial, example
-Work: work, project, production
-Personal: personal, hobby, experiment
-```
+Required files:
 
-#### By Status
-```
-Status: active, archived, todo, done
-Priority: high, medium, low
-Quality: excellent, good, average
+```text
+main.js
+manifest.json
+styles.css
 ```
 
-### 📋 Repository Management Tips
+Restart Obsidian and enable the plugin.
 
-#### Regular Cleanup
-- Monthly cleanup of uninteresting repositories
-- Update tag categories
-- Improve repository notes
+## Data Safety
 
-#### Note Taking
-Recommended to record:
-- **First Impression**: Why you starred this project
-- **Core Features**: Main characteristics of the project
-- **Use Cases**: When you would use it
-- **Learning Value**: What technologies you can learn
-- **Related Projects**: Similar alternatives
+Plugin data is stored locally in Obsidian plugin data. Regularly back up:
 
-#### Export Backup
-- Export complete data monthly
-- Export different tagged repositories by category
-- Regularly check backup file integrity
+```text
+VaultFolder/.obsidian/plugins/github-stars-manager/data.json
+```
 
-### 🎯 Workflow Suggestions
-
-#### Daily Usage
-1. Check newly starred repositories in the morning
-2. Add appropriate tags to new repositories
-3. Record notes for important repositories
-4. Regularly organize and clean up unused repositories
-
-#### Learning Plans
-1. Use "learning" tag for learning resources
-2. Organize by technology stack
-3. Create learning plans and track progress
-4. Link to learning notes
-
-#### Project Management
-1. Create specific tags for work projects
-2. Record used open source libraries and tools
-3. Build technology stack knowledge base
-4. Share excellent projects with team
-
----
-
-🎉 **Congratulations!** You now master all features of GitHub Stars Manager. Start enjoying better starred repository management!
-
-Have other questions? Feel free to ask in [GitHub Issues](https://github.com/EmberSparks/obsidian-github-stars-manager/issues).
+The plugin does not upload note content, collect telemetry, or send your GitHub token to services other than GitHub.

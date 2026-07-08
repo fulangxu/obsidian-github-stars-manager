@@ -10,6 +10,7 @@ export interface RepoQueryDataItem {
     notes?: string;
     language?: string | null;
     tags?: string[];
+    categoryPath?: string[];
     account_id?: string;
     stargazers_count?: number;
     forks_count?: number;
@@ -20,6 +21,7 @@ export interface RepoQueryDataItem {
 export interface RepoQueryInput {
     textFilter: string;
     activeTagFilters: string[];
+    activeCategoryPath: string[];
     enabledAccountIds: string[];
     sortBy: RepoSortBy;
     sortOrder: RepoSortOrder;
@@ -66,6 +68,7 @@ interface RepoQueryPreparedItem {
     accountId: string;
     searchableText: string;
     normalizedTagSet: Set<string>;
+    normalizedCategoryPath: string[];
     stargazersCount: number;
     forksCount: number;
     updatedAtTimestamp: number;
@@ -85,6 +88,11 @@ function prepareRepoForQuery(repo: RepoQueryDataItem): RepoQueryPreparedItem {
             .map((tag) => normalizeTag(String(tag)))
             .filter((tag) => tag.length > 0)
         : [];
+    const normalizedCategoryPath = Array.isArray(repo.categoryPath)
+        ? repo.categoryPath
+            .map((segment) => String(segment).trim().toLowerCase())
+            .filter((segment) => segment.length > 0)
+        : [];
     const searchableTextParts = [
         repo.name || '',
         repo.full_name || '',
@@ -92,7 +100,8 @@ function prepareRepoForQuery(repo: RepoQueryDataItem): RepoQueryPreparedItem {
         repo.owner?.login || '',
         repo.notes || '',
         repo.language || '',
-        ...normalizedTags
+        ...normalizedTags,
+        ...normalizedCategoryPath
     ];
 
     return {
@@ -100,6 +109,7 @@ function prepareRepoForQuery(repo: RepoQueryDataItem): RepoQueryPreparedItem {
         accountId: repo.account_id ? String(repo.account_id) : '',
         searchableText: searchableTextParts.join('\n').toLowerCase(),
         normalizedTagSet: new Set(normalizedTags),
+        normalizedCategoryPath,
         stargazersCount: Number(repo.stargazers_count) || 0,
         forksCount: Number(repo.forks_count) || 0,
         updatedAtTimestamp: parseDate(repo.updated_at),
@@ -114,7 +124,11 @@ function runRepoQuery(repositories: RepoQueryPreparedItem[], input: RepoQueryInp
     const activeTagFilters = (input.activeTagFilters || [])
         .map((tag) => normalizeTag(String(tag)))
         .filter((tag) => tag.length > 0);
+    const activeCategoryPath = (input.activeCategoryPath || [])
+        .map((segment) => String(segment).trim().toLowerCase())
+        .filter((segment) => segment.length > 0);
     const needTagFilter = activeTagFilters.length > 0;
+    const needCategoryFilter = activeCategoryPath.length > 0;
     const isDesc = input.sortOrder === 'desc';
 
     if (enabledAccountIds.size === 0) {
@@ -127,6 +141,19 @@ function runRepoQuery(repositories: RepoQueryPreparedItem[], input: RepoQueryInp
         }
         if (keyword && !repo.searchableText.includes(keyword)) {
             return false;
+        }
+        if (!needTagFilter) {
+            if (!needCategoryFilter) {
+                return true;
+            }
+        }
+        if (needCategoryFilter) {
+            const matchesCategory = activeCategoryPath.every(
+                (segment, index) => repo.normalizedCategoryPath[index] === segment
+            );
+            if (!matchesCategory) {
+                return false;
+            }
         }
         if (!needTagFilter) {
             return true;
@@ -375,6 +402,7 @@ self.onmessage = (event) => {
             const input = payload.input || {
                 textFilter: '',
                 activeTagFilters: [],
+                activeCategoryPath: [],
                 enabledAccountIds: [],
                 sortBy: 'starred_at',
                 sortOrder: 'desc'

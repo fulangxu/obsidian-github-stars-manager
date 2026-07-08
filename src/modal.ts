@@ -15,6 +15,11 @@ export class EditRepoModal extends Modal {
     plugin: GithubStarsPlugin;
     githubRepo: GithubRepository;
     tags: string;
+    categoryPath: string;
+    status: 'inbox' | 'active' | 'reviewed' | 'archived';
+    rating: number;
+    personalSummary: string;
+    personalReview: string;
     notes: string;
     linkedNote: string;
     projectLinks: RepoProjectLink[];
@@ -33,6 +38,11 @@ export class EditRepoModal extends Modal {
 
         const existingEnhancement = plugin.data.userEnhancements[githubRepo.id];
         this.tags = existingEnhancement?.tags?.join(', ') || '';
+        this.categoryPath = existingEnhancement?.categoryPath?.join(' / ') || '';
+        this.status = existingEnhancement?.status || (existingEnhancement?.categoryPath?.length ? 'active' : 'inbox');
+        this.rating = existingEnhancement?.rating || 0;
+        this.personalSummary = existingEnhancement?.personalSummary || '';
+        this.personalReview = existingEnhancement?.personalReview || '';
         this.notes = existingEnhancement?.notes || '';
         this.linkedNote = existingEnhancement?.linked_note || '';
         this.projectLinks = normalizeProjectLinks(existingEnhancement?.project_links || []);
@@ -69,6 +79,71 @@ export class EditRepoModal extends Modal {
 
         this.tagChipsContainer = contentEl.createDiv('tag-chips-input-wrapper');
         this.renderTagChipsInput();
+
+        const categorySetting = new Setting(contentEl)
+            .setName(t('modal.categoryPath'))
+            .setDesc(t('modal.categoryPathDesc'))
+            .addText(text => {
+                text.setPlaceholder(t('modal.categoryPathPlaceholder'))
+                    .setValue(this.categoryPath)
+                    .onChange(value => {
+                        this.categoryPath = value;
+                    });
+            });
+        categorySetting.settingEl.addClass('edit-repo-category-setting');
+
+        const statusSetting = new Setting(contentEl)
+            .setName(t('modal.status'))
+            .setDesc(t('modal.statusDesc'))
+            .addDropdown(dropdown => dropdown
+                .addOption('inbox', t('view.status.inbox'))
+                .addOption('active', t('view.status.active'))
+                .addOption('reviewed', t('view.status.reviewed'))
+                .addOption('archived', t('view.status.archived'))
+                .setValue(this.status)
+                .onChange((value: 'inbox' | 'active' | 'reviewed' | 'archived') => {
+                    this.status = value;
+                })
+            )
+            .addSlider(slider => {
+                slider.setLimits(0, 5, 1)
+                    .setValue(this.rating)
+                    .setDynamicTooltip()
+                    .onChange((value) => {
+                        this.rating = value;
+                    });
+            });
+        statusSetting.settingEl.addClass('edit-repo-status-setting');
+
+        const summarySetting = new Setting(contentEl)
+            .setName(t('modal.personalSummary'))
+            .addTextArea(text => {
+                const textareaEl = text.inputEl;
+                textareaEl.addClass('edit-repo-summary-textarea');
+                textareaEl.setAttribute('rows', '1');
+                text.setPlaceholder(t('modal.personalSummaryPlaceholder'))
+                    .setValue(this.personalSummary)
+                    .onChange(value => {
+                        this.personalSummary = value;
+                    });
+                this.attachAutoResizeTextareaBehavior(textareaEl);
+            });
+        summarySetting.settingEl.addClass('edit-repo-summary-setting');
+
+        const reviewSetting = new Setting(contentEl)
+            .setName(t('modal.personalReview'))
+            .addTextArea(text => {
+                const textareaEl = text.inputEl;
+                textareaEl.addClass('edit-repo-review-textarea');
+                textareaEl.setAttribute('rows', '2');
+                text.setPlaceholder(t('modal.personalReviewPlaceholder'))
+                    .setValue(this.personalReview)
+                    .onChange(value => {
+                        this.personalReview = value;
+                    });
+                this.attachAutoResizeTextareaBehavior(textareaEl);
+            });
+        reviewSetting.settingEl.addClass('edit-repo-review-setting');
 
         const notesSetting = new Setting(contentEl)
             .setName(t('modal.notes'))
@@ -133,6 +208,12 @@ export class EditRepoModal extends Modal {
                 .setButtonText(t('modal.browse'))
                 .onClick(() => {
                     this.openNoteBrowser();
+                })
+            )
+            .addButton(button => button
+                .setButtonText(t('modal.createDetailDoc'))
+                .onClick(() => {
+                    void this.createOrUpdateDetailDoc(button.buttonEl);
                 })
             );
 
@@ -345,6 +426,33 @@ export class EditRepoModal extends Modal {
         }, 0);
     }
 
+    private parseCategoryPathInput(): string[] {
+        return this.categoryPath
+            .split(/[\/>\\|]+/g)
+            .map((segment) => segment.trim())
+            .filter((segment) => segment.length > 0);
+    }
+
+    private async createOrUpdateDetailDoc(buttonEl: HTMLButtonElement): Promise<void> {
+        buttonEl.disabled = true;
+        const previousText = buttonEl.textContent || t('modal.createDetailDoc');
+        buttonEl.textContent = t('modal.creatingDetailDoc');
+        try {
+            await this.saveChanges({ closeAfterSave: false, showNotice: false });
+            const path = await this.plugin.createRepositoryDetailNote(this.githubRepo);
+            if (path) {
+                this.linkedNote = path;
+                if (this.linkedNoteInputEl) {
+                    this.linkedNoteInputEl.value = path;
+                }
+                new Notice(t('modal.detailDocCreated', { path }));
+            }
+        } finally {
+            buttonEl.disabled = false;
+            buttonEl.textContent = previousText;
+        }
+    }
+
     /**
      * 打开笔记浏览器
      */
@@ -362,7 +470,7 @@ export class EditRepoModal extends Modal {
     /**
      * 保存仓库信息变更
      */
-    async saveChanges() {
+    async saveChanges(options?: { closeAfterSave?: boolean; showNotice?: boolean }) {
         const repoId = this.githubRepo.id;
         const existingEnhancement = this.plugin.data.userEnhancements[repoId];
 
@@ -373,6 +481,14 @@ export class EditRepoModal extends Modal {
                 .split(',')
                 .map(tag => tag.trim())
                 .filter(tag => tag.length > 0),
+            categoryPath: this.parseCategoryPathInput(),
+            status: this.status,
+            rating: this.rating,
+            personalSummary: this.personalSummary.trim(),
+            personalReview: this.personalReview.trim(),
+            archivedAt: this.status === 'archived'
+                ? existingEnhancement?.archivedAt || new Date().toISOString()
+                : undefined,
             linked_note: this.linkedNote.trim() || undefined,
             project_links: this.projectLinks,
             repoSnapshot: buildEnhancementRepoSnapshot(this.githubRepo, new Date().toISOString())
@@ -381,8 +497,12 @@ export class EditRepoModal extends Modal {
         this.plugin.data.userEnhancements[repoId] = updatedEnhancement;
         await this.plugin.savePluginData();
 
-        new Notice(t('notices.repoUpdated'));
-        this.close();
+        if (options?.showNotice !== false) {
+            new Notice(t('notices.repoUpdated'));
+        }
+        if (options?.closeAfterSave !== false) {
+            this.close();
+        }
     }
 }
 

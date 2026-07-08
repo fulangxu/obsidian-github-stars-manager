@@ -135,6 +135,7 @@ export default class GithubStarsPlugin extends Plugin {
         this._migrateSyncIntervalSettings(loaded);
         this._normalizeRepoRenderPerformanceMode();
         this._migrateExportOptions();
+        this._migrateNoteSettings();
     }
 
     private normalizeSyncIntervalDays(rawDays: number): number {
@@ -174,6 +175,13 @@ export default class GithubStarsPlugin extends Plugin {
         }
     }
 
+    private _migrateNoteSettings(): void {
+        this.settings.noteSettings = {
+            ...DEFAULT_SETTINGS.noteSettings,
+            ...(this.settings.noteSettings || {})
+        };
+    }
+
     /**
      * 确保加载的数据结构是正确的，防止因数据损坏或版本更新导致的问题。
      */
@@ -183,6 +191,9 @@ export default class GithubStarsPlugin extends Plugin {
         }
         if (typeof this.data.userEnhancements !== 'object' || this.data.userEnhancements === null || Array.isArray(this.data.userEnhancements)) {
             this.data.userEnhancements = {};
+        }
+        if (!Array.isArray(this.data.knownCategories)) {
+            this.data.knownCategories = [];
         }
         if (!Array.isArray(this.data.allTags)) {
             this.data.allTags = [];
@@ -829,5 +840,37 @@ export default class GithubStarsPlugin extends Plugin {
             console.error(`导出 ${repository.full_name} 失败:`, error);
             new Notice(t('plugin.exportSingleFailed', { name: repository.full_name }));
         }
+    }
+
+    async createRepositoryDetailNote(repository: GithubRepository): Promise<string | null> {
+        const existingEnhancement = this.data.userEnhancements[repository.id] || {
+            notes: '',
+            tags: [],
+            categoryPath: [],
+            status: 'inbox' as const,
+            rating: 0,
+            personalSummary: '',
+            personalReview: '',
+            project_links: [],
+            linked_note: undefined
+        };
+        const detailPath = await this.exportService.createRepositoryDetailNote(
+            repository,
+            existingEnhancement,
+            this.data.exportOptions,
+            this.settings.noteSettings
+        );
+        if (!detailPath) {
+            return null;
+        }
+
+        this.data.userEnhancements[repository.id] = {
+            ...existingEnhancement,
+            linked_note: detailPath,
+            repoSnapshot: buildEnhancementRepoSnapshot(repository, new Date().toISOString())
+        };
+        await this.savePluginData();
+        new Notice(t('view.detailDocCreated', { path: detailPath }));
+        return detailPath;
     }
 }
